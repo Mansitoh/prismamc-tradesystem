@@ -1,6 +1,7 @@
 package com.prismamc.trade.gui.trade;
 
 import java.util.HashMap;
+import java.util.List;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -11,6 +12,7 @@ import org.bukkit.inventory.meta.SkullMeta;
 import com.prismamc.trade.Plugin;
 import com.prismamc.trade.gui.lib.GUI;
 import com.prismamc.trade.gui.lib.GUIItem;
+import com.prismamc.trade.manager.TradeManager;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -166,19 +168,23 @@ public class TradeGUI extends GUI {
         }
 
         tradeCompleted = true;
-        plugin.getTradeManager().updateTradeState(tradeId, com.prismamc.trade.manager.TradeManager.TradeState.COMPLETED);
+        plugin.getTradeManager().updateTradeState(tradeId, TradeManager.TradeState.COMPLETED);
         
         try {
             // Execute the trade
-            moveItems(TRADER1_SLOTS, trader2);
-            moveItems(TRADER2_SLOTS, trader1);
+            List<ItemStack> trader1Items = plugin.getTradeManager().getAndRemoveTradeItems(tradeId, trader1.getUniqueId());
+            List<ItemStack> trader2Items = plugin.getTradeManager().getAndRemoveTradeItems(tradeId, trader2.getUniqueId());
+
+            // Transferir items
+            transferItems(trader2, trader1Items);
+            transferItems(trader1, trader2Items);
 
             // Close inventory for both players
             trader1.closeInventory();
             trader2.closeInventory();
 
             // Send success messages
-            String successMessage = "§aThe trade has been completed successfully!";
+            String successMessage = "§a¡El trade se ha completado exitosamente!";
             trader1.sendMessage(successMessage);
             trader2.sendMessage(successMessage);
 
@@ -186,25 +192,9 @@ public class TradeGUI extends GUI {
             plugin.getTradeManager().cleanupTrade(tradeId);
         } catch (Exception e) {
             plugin.getLogger().severe(String.format("Error completing trade %d: %s", tradeId, e.getMessage()));
-            trader1.sendMessage("§cError completing trade! Items have been returned.");
-            trader2.sendMessage("§cError completing trade! Items have been returned.");
+            trader1.sendMessage("§c¡Error al completar el trade! Los items han sido devueltos.");
+            trader2.sendMessage("§c¡Error al completar el trade! Los items han sido devueltos.");
             cancelTrade(trader1);
-        }
-    }
-
-    private void moveItems(int[] slots, Player receiver) {
-        for(int slot : slots) {
-            ItemStack item = inventory.getItem(slot);
-            if(item != null && !item.getType().equals(Material.AIR)) {
-                HashMap<Integer, ItemStack> leftover = receiver.getInventory().addItem(item.clone());
-                if (!leftover.isEmpty()) {
-                    // Si el inventario está lleno, dropeamos los items al suelo
-                    for (ItemStack drop : leftover.values()) {
-                        receiver.getWorld().dropItemNaturally(receiver.getLocation(), drop);
-                    }
-                    receiver.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
-                }
-            }
         }
     }
 
@@ -212,16 +202,22 @@ public class TradeGUI extends GUI {
         if (tradeCompleted || tradeCancelled || itemsReturned) return;
         
         tradeCancelled = true;
-        plugin.getTradeManager().updateTradeState(tradeId, com.prismamc.trade.manager.TradeManager.TradeState.CANCELLED);
+        plugin.getTradeManager().updateTradeState(tradeId, TradeManager.TradeState.CANCELLED);
         
         try {
-            returnItems(TRADER1_SLOTS, trader1);
-            returnItems(TRADER2_SLOTS, trader2);
+            // Get items from trade manager
+            List<ItemStack> trader1Items = plugin.getTradeManager().getAndRemoveTradeItems(tradeId, trader1.getUniqueId());
+            List<ItemStack> trader2Items = plugin.getTradeManager().getAndRemoveTradeItems(tradeId, trader2.getUniqueId());
+            
+            // Return items to their owners
+            returnItemsToPlayer(trader1, trader1Items);
+            returnItemsToPlayer(trader2, trader2Items);
+            
             itemsReturned = true;
         } catch (Exception e) {
             plugin.getLogger().severe(String.format("Error cancelling trade %d: %s", tradeId, e.getMessage()));
-            trader1.sendMessage("§cError returning items! Please contact an administrator.");
-            trader2.sendMessage("§cError returning items! Please contact an administrator.");
+            trader1.sendMessage("§c¡Error al devolver los items! Por favor contacta a un administrador.");
+            trader2.sendMessage("§c¡Error al devolver los items! Por favor contacta a un administrador.");
             return;
         }
 
@@ -246,19 +242,29 @@ public class TradeGUI extends GUI {
         plugin.getTradeManager().cleanupTrade(tradeId);
     }
 
-    private void returnItems(int[] slots, Player owner) {
-        if (itemsReturned) return;
-        
-        for (int slot : slots) {
-            ItemStack item = inventory.getItem(slot);
+    private void transferItems(Player receiver, List<ItemStack> items) {
+        for (ItemStack item : items) {
             if (item != null && !item.getType().equals(Material.AIR)) {
-                HashMap<Integer, ItemStack> leftover = owner.getInventory().addItem(item.clone());
+                HashMap<Integer, ItemStack> leftover = receiver.getInventory().addItem(item.clone());
                 if (!leftover.isEmpty()) {
-                    // Si el inventario está lleno, dropeamos los items al suelo
                     for (ItemStack drop : leftover.values()) {
-                        owner.getWorld().dropItemNaturally(owner.getLocation(), drop);
+                        receiver.getWorld().dropItemNaturally(receiver.getLocation(), drop);
                     }
-                    owner.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
+                    receiver.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
+                }
+            }
+        }
+    }
+
+    private void returnItemsToPlayer(Player player, List<ItemStack> items) {
+        for (ItemStack item : items) {
+            if (item != null && !item.getType().equals(Material.AIR)) {
+                HashMap<Integer, ItemStack> leftover = player.getInventory().addItem(item.clone());
+                if (!leftover.isEmpty()) {
+                    for (ItemStack drop : leftover.values()) {
+                        player.getWorld().dropItemNaturally(player.getLocation(), drop);
+                    }
+                    player.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
                 }
             }
         }

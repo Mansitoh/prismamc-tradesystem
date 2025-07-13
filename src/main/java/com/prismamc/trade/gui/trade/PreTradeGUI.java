@@ -10,6 +10,7 @@ import com.prismamc.trade.gui.lib.GUIItem;
 import com.prismamc.trade.manager.TradeManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.event.ClickEvent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +27,7 @@ public class PreTradeGUI extends GUI {
         18, 19, 20, 21, 22, 23, 24, 25, 26,
         27, 28, 29, 30, 31, 32, 33, 34, 35
     };
-    private static final int CONFIRM_SLOT = 44;
+    private static final int CONFIRM_SLOT = 49;
     private static final int INFO_SLOT = 40;
     private final List<ItemStack> selectedItems;
     private boolean closedByButton;
@@ -48,36 +49,51 @@ public class PreTradeGUI extends GUI {
 
     @Override
     protected void initializeItems() {
+        // Verificar validez del trade
+        if (!plugin.getTradeManager().isTradeValid(tradeId)) {
+            owner.sendMessage(Component.text("Este trade ya no es válido!")
+                .color(NamedTextColor.RED));
+            owner.closeInventory();
+            return;
+        }
+
+        // Agregar botón de confirmar en la parte inferior
         GUIItem confirmButton = new GUIItem(Material.EMERALD)
             .setName(isResponse ? "§aConfirmar tus items" : "§aConfirmar oferta de trade")
             .setLore(
                 isResponse ? new String[]{
-                    "§7Click para confirmar y proceder",
-                    "§7con el trade"
+                    "§7Click para proceder con el trade",
+                    "§7y mostrar los items a",
+                    "§f" + initiator.getName()
                 } : new String[]{
-                    "§7Click para confirmar y enviar",
-                    "§7solicitud de trade a " + target.getName()
+                    "§7Click para enviar solicitud",
+                    "§7de trade a",
+                    "§f" + target.getName()
                 }
             );
         inventory.setItem(CONFIRM_SLOT, confirmButton.getItemStack());
 
+        // Agregar cartel informativo en el centro
         GUIItem infoSign = new GUIItem(Material.OAK_SIGN)
             .setName("§eInformación del Trade")
             .setLore(
-                "§7Tradeando con: §f" + (isResponse ? initiator.getName() : target.getName()),
-                "§7Click en items de tu inventario",
-                "§7para agregarlos al trade",
+                "§7" + (isResponse ? "Respondiendo a" : "Tradeando con") + ": §f" + (isResponse ? initiator.getName() : target.getName()),
+                "§7ID del Trade: §f" + tradeId,
                 "",
-                "§7Cierra la ventana para",
-                "§7cancelar y recuperar tus items"
+                "§7Coloca tus items en los",
+                "§7slots disponibles arriba",
+                "",
+                "§7Click en el botón verde",
+                "§7para confirmar"
             );
-        inventory.setItem(INFO_SLOT, infoSign.getItemStack());
+        inventory.setItem(INFO_SLOT,infoSign.getItemStack());
 
+        // Agregar bordes decorativos
         GUIItem border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
             .setName(" ");
-
-        for (int i = 45; i < 54; i++) {
-            if (i != CONFIRM_SLOT && i != INFO_SLOT) {
+            
+        for (int i = 36; i < 54; i++) {
+            if (i != 40 && i != 49) {
                 inventory.setItem(i, border.getItemStack());
             }
         }
@@ -131,12 +147,11 @@ public class PreTradeGUI extends GUI {
             return;
         }
 
-        // Cerrar con éxito el menú
         closedByButton = true;
         
         if (isResponse) {
             plugin.getTradeManager().updateTradeState(tradeId, TradeManager.TradeState.ACTIVE);
-            plugin.getTradeManager().storePreTradeItems(owner.getUniqueId(), selectedItems);
+            plugin.getTradeManager().storeTradeItems(tradeId, owner.getUniqueId(), selectedItems);
             owner.closeInventory();
             
             initiator.sendMessage(Component.text(target.getName())
@@ -146,8 +161,8 @@ public class PreTradeGUI extends GUI {
                 
             TradeGUI tradeGUI = new TradeGUI(initiator, target, tradeId, plugin);
             
-            List<ItemStack> initiatorItems = plugin.getTradeManager().getAndRemovePreTradeItems(initiator.getUniqueId());
-            List<ItemStack> targetItems = plugin.getTradeManager().getAndRemovePreTradeItems(target.getUniqueId());
+            List<ItemStack> initiatorItems = plugin.getTradeManager().getTradeItems(tradeId, initiator.getUniqueId());
+            List<ItemStack> targetItems = plugin.getTradeManager().getTradeItems(tradeId, target.getUniqueId());
             
             if (initiatorItems != null) {
                 for (int i = 0; i < initiatorItems.size(); i++) {
@@ -165,7 +180,7 @@ public class PreTradeGUI extends GUI {
             tradeGUI.openFor(target);
             
         } else {
-            plugin.getTradeManager().storePreTradeItems(owner.getUniqueId(), selectedItems);
+            plugin.getTradeManager().storeTradeItems(tradeId, owner.getUniqueId(), selectedItems);
             owner.closeInventory();
             sendViewTradeRequest();
         }
@@ -182,11 +197,15 @@ public class PreTradeGUI extends GUI {
         initiator.sendMessage(Component.text("Tus items han sido enviados a ")
             .color(NamedTextColor.GREEN)
             .append(Component.text(target.getName())
-            .color(NamedTextColor.WHITE)));
+            .color(NamedTextColor.WHITE))
+            .append(Component.text(" (Trade ID: " + tradeId + ")")
+            .color(NamedTextColor.GRAY)));
         
         target.sendMessage(Component.empty());
-        target.sendMessage(Component.text("⚡ ¡Nueva solicitud de trade!")
-            .color(NamedTextColor.YELLOW));
+        target.sendMessage(Component.text("⚡ ¡Nueva solicitud de trade! ")
+            .color(NamedTextColor.YELLOW)
+            .append(Component.text("(ID: " + tradeId + ")")
+            .color(NamedTextColor.GRAY)));
         target.sendMessage(Component.text(initiator.getName())
             .color(NamedTextColor.WHITE)
             .append(Component.text(" quiere tradear contigo. Click en el botón para ver sus items.")
@@ -195,7 +214,7 @@ public class PreTradeGUI extends GUI {
         
         Component viewButton = Component.text("[Ver Items del Trade]")
             .color(NamedTextColor.GREEN)
-            .clickEvent(net.kyori.adventure.text.event.ClickEvent.runCommand("/tradeaccept " + initiator.getName()));
+            .clickEvent(ClickEvent.runCommand("/tradeaccept " + initiator.getName() + " " + tradeId));
             
         target.sendMessage(viewButton);
         target.sendMessage(Component.empty());
