@@ -14,6 +14,12 @@ public class TradeManager {
         preTradeItems.put(playerUUID, new ArrayList<>(items));
     }
 
+    public List<ItemStack> getPreTradeItems(UUID playerUUID) {
+        return preTradeItems.containsKey(playerUUID) ? 
+            new ArrayList<>(preTradeItems.get(playerUUID)) : 
+            new ArrayList<>();
+    }
+
     public List<ItemStack> getAndRemovePreTradeItems(UUID playerUUID) {
         return preTradeItems.remove(playerUUID);
     }

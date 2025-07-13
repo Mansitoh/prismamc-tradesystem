@@ -1,5 +1,7 @@
 package com.prismamc.trade.gui.trade;
 
+import java.util.HashMap;
+
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -24,6 +26,8 @@ public class TradeGUI extends GUI {
     private boolean trader1Accepted = false;
     private boolean trader2Accepted = false;
     private boolean tradeCompleted = false;
+    private boolean tradeCancelled = false;
+    private boolean itemsReturned = false;
 
     public TradeGUI(Player trader1, Player trader2) {
         super(trader1, "Trading with " + trader2.getName(), 54);
@@ -168,18 +172,28 @@ public class TradeGUI extends GUI {
     }
 
     public void cancelTrade(Player canceledBy) {
-        if (tradeCompleted) return;
-
+        if (tradeCompleted || tradeCancelled || itemsReturned) return;
+        
+        tradeCancelled = true;
+        
         // Return items to their original owners
-        returnItems(TRADER1_SLOTS, trader1);
-        returnItems(TRADER2_SLOTS, trader2);
+        try {
+            returnItems(TRADER1_SLOTS, trader1);
+            returnItems(TRADER2_SLOTS, trader2);
+            itemsReturned = true;
+        } catch (Exception e) {
+            trader1.sendMessage("§cError returning items! Please contact an administrator.");
+            trader2.sendMessage("§cError returning items! Please contact an administrator.");
+            e.printStackTrace();
+            return;
+        }
 
         // Notify both players
         String cancelMessage = "§c" + canceledBy.getName() + " cancelled the trade!";
         trader1.sendMessage(cancelMessage);
         trader2.sendMessage(cancelMessage);
 
-        // Close inventories for both players
+        // Close inventories for both players if they haven't already closed them
         if (trader1.getOpenInventory().getTopInventory().equals(inventory)) {
             trader1.closeInventory();
         }
@@ -189,10 +203,19 @@ public class TradeGUI extends GUI {
     }
 
     private void returnItems(int[] slots, Player owner) {
+        if (itemsReturned) return;
+        
         for (int slot : slots) {
             ItemStack item = inventory.getItem(slot);
             if (item != null && !item.getType().equals(Material.AIR)) {
-                owner.getInventory().addItem(item.clone());
+                HashMap<Integer, ItemStack> leftover = owner.getInventory().addItem(item.clone());
+                if (!leftover.isEmpty()) {
+                    // Si el inventario está lleno, dropeamos los items al suelo
+                    for (ItemStack drop : leftover.values()) {
+                        owner.getWorld().dropItemNaturally(owner.getLocation(), drop);
+                    }
+                    owner.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
+                }
             }
         }
     }
@@ -208,6 +231,14 @@ public class TradeGUI extends GUI {
 
     public boolean isTradeCompleted() {
         return tradeCompleted;
+    }
+
+    public boolean isTradeCancelled() {
+        return tradeCancelled;
+    }
+
+    public boolean areItemsReturned() {
+        return itemsReturned;
     }
 
     public void openFor(Player player) {

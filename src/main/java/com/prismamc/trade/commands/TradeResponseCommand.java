@@ -6,120 +6,149 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import com.prismamc.trade.Plugin;
-import com.prismamc.trade.gui.trade.TradeGUI;
+import com.prismamc.trade.gui.trade.ViewTradeGUI;
 import com.prismamc.trade.commands.base.AMyCommand;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class TradeResponseCommand extends AMyCommand<Plugin> {
     
     private final Plugin plugin;
     private final boolean isAccept;
+    private static final String PLAYER_ONLY = "§cThis command can only be used by players!";
+    private static final String PLAYER_OFFLINE = "§cThat player is no longer online!";
+    private static final String SELF_TRADE = "§cYou cannot accept/decline your own trade request!";
+    private static final String EXPIRED = "§cThe trade request has expired!";
+    private static final String EXPIRED_REQUESTER = "§cYour trade request has expired. Please send a new one.";
 
     public TradeResponseCommand(Plugin plugin, boolean isAccept) {
         super(plugin, isAccept ? "tradeaccept" : "tradedecline");
         this.plugin = plugin;
         this.isAccept = isAccept;
-        this.setDescription(isAccept ? "Accept a trade request" : "Decline a trade request");
+        this.setDescription(isAccept ? "View trade items from a player" : "Decline a trade request");
         this.setUsage("/" + (isAccept ? "tradeaccept" : "tradedecline") + " <player>");
         
         if (this.registerCommand()) {
-            plugin.getLogger().info("Trade " + (isAccept ? "accept" : "decline") + " command registered successfully!");
+            StringBuilder logMsg = new StringBuilder("Trade ")
+                .append(isAccept ? "accept" : "decline")
+                .append(" command registered successfully!");
+            plugin.getLogger().info(logMsg.toString());
         }
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            if (sender != null) {
-                sender.sendMessage("This command can only be used by players!");
-            }
-            return true;
-        }
-
-        if (args.length != 1) {
-            sender.sendMessage("Usage: " + this.getUsage());
+            Objects.requireNonNullElse(sender, Bukkit.getConsoleSender()).sendMessage(PLAYER_ONLY);
             return true;
         }
 
         Player responder = (Player) sender;
-        Player target = Bukkit.getPlayer(args[0]);
 
-        if (!validateTradeRequest(responder, target)) {
+        if (args.length != 1) {
+            responder.sendMessage(getUsage());
             return true;
         }
 
-        if (isAccept) {
-            handleTradeAcceptance(responder, target);
-        } else {
-            handleTradeDecline(responder, target);
+        Player requester = Bukkit.getPlayer(args[0]);
+
+        if (!validateTradeRequest(responder, requester)) {
+            return true;
         }
 
-        return true;
+        try {
+            if (isAccept) {
+                handleTradeView(responder, requester);
+            } else {
+                handleTradeDecline(responder, requester);
+            }
+            return true;
+        } catch (Exception e) {
+            plugin.getLogger().severe(String.format("Error processing trade response command: %s", e.getMessage()));
+            responder.sendMessage("§cAn error occurred while processing your request. Please try again.");
+            return false;
+        }
+    }
+
+    @Override
+    public List<String> tabComplete(CommandSender sender, String alias, String[] args) {
+        if (args.length == 1) {
+            String input = args[0].toLowerCase();
+            return Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .filter(name -> {
+                    Player player = Bukkit.getPlayer(name);
+                    // Solo mostrar jugadores que tienen items de trade pendientes
+                    return player != null && 
+                           !name.equals(sender.getName()) && 
+                           name.toLowerCase().startsWith(input) &&
+                           (!isAccept || plugin.getTradeManager().hasPreTradeItems(player.getUniqueId()));
+                })
+                .collect(Collectors.toList());
+        }
+        return super.tabComplete(sender, alias, args);
     }
 
     private boolean validateTradeRequest(Player responder, Player requester) {
         if (requester == null || !requester.isOnline()) {
-            responder.sendMessage("That player is no longer online!");
+            responder.sendMessage(PLAYER_OFFLINE);
             return false;
         }
 
         if (responder.equals(requester)) {
-            responder.sendMessage("You cannot accept/decline your own trade request!");
+            responder.sendMessage(SELF_TRADE);
             return false;
         }
 
         if (isAccept && !plugin.getTradeManager().hasPreTradeItems(requester.getUniqueId())) {
-            responder.sendMessage("The trade request has expired!");
-            requester.sendMessage("Your trade request has expired. Please send a new one.");
+            responder.sendMessage(EXPIRED);
+            requester.sendMessage(EXPIRED_REQUESTER);
             return false;
         }
 
         return true;
     }
 
-    private void handleTradeAcceptance(Player responder, Player requester) {
-        // Get pre-selected items
-        List<ItemStack> preTradeItems = plugin.getTradeManager().getAndRemovePreTradeItems(requester.getUniqueId());
-
-        // Create and open trade GUI with pre-selected items
-        TradeGUI tradeGUI = new TradeGUI(requester, responder);
+    private void handleTradeView(Player responder, Player requester) {
+        List<ItemStack> preTradeItems = plugin.getTradeManager().getPreTradeItems(requester.getUniqueId());
         
-        // Pre-fill requester's items
-        for (int i = 0; i < preTradeItems.size(); i++) {
-            tradeGUI.setInitialItem(requester, i, preTradeItems.get(i));
+        if (preTradeItems.isEmpty()) {
+            responder.sendMessage(EXPIRED);
+            requester.sendMessage(EXPIRED_REQUESTER);
+            return;
         }
+
+        ViewTradeGUI viewTradeGUI = new ViewTradeGUI(responder, requester, plugin, preTradeItems);
+        viewTradeGUI.openInventory();
         
-        // Open inventory for both players
-        tradeGUI.openInventory();
-        tradeGUI.openFor(responder);
-        
-        // Send acceptance messages
         requester.sendMessage(Component.text(responder.getName())
             .color(NamedTextColor.WHITE)
-            .append(Component.text(" accepted your trade request!")
+            .append(Component.text(" is viewing your trade items!")
             .color(NamedTextColor.GREEN)));
-            
-        responder.sendMessage(Component.text("You accepted the trade request from ")
-            .color(NamedTextColor.GREEN)
-            .append(Component.text(requester.getName())
-            .color(NamedTextColor.WHITE)));
     }
 
     private void handleTradeDecline(Player responder, Player requester) {
-        // Return items to requester if they exist
         if (plugin.getTradeManager().hasPreTradeItems(requester.getUniqueId())) {
-            List<ItemStack> preTradeItems = plugin.getTradeManager().getAndRemovePreTradeItems(requester.getUniqueId());
-            for (ItemStack item : preTradeItems) {
-                if (item != null) {
-                    requester.getInventory().addItem(item);
-                }
-            }
+            returnItemsToRequester(requester);
         }
         
-        // Send decline messages
+        sendDeclineMessages(responder, requester);
+    }
+
+    private void returnItemsToRequester(Player requester) {
+        List<ItemStack> preTradeItems = plugin.getTradeManager().getAndRemovePreTradeItems(requester.getUniqueId());
+        for (ItemStack item : preTradeItems) {
+            if (item != null) {
+                requester.getInventory().addItem(item.clone());
+            }
+        }
+    }
+
+    private void sendDeclineMessages(Player responder, Player requester) {
         requester.sendMessage(Component.text(responder.getName())
             .color(NamedTextColor.WHITE)
             .append(Component.text(" declined your trade request.")

@@ -25,11 +25,8 @@ public class Plugin extends JavaPlugin {
         // Register the listener for GUIs
         registerListeners();
         
-        // Register commands when server is fully loaded
-        Bukkit.getScheduler().runTask(this, () -> {
-            registerCommands();
-            getLogger().info("Registering commands...");
-        });
+        // Register commands immediately
+        registerCommands();
         
         getLogger().info("PrismaMCTradePlugin has been enabled successfully.");
         getLogger().log(Level.INFO, "Version: {0}", getDescription().getVersion());

@@ -4,3 +4,4 @@ main: com.prismamc.trade.Plugin
 api-version: 1.21
 authors: [Mansitoh]
 description: Plugin de tradeo de prueba para PrismaMC
+

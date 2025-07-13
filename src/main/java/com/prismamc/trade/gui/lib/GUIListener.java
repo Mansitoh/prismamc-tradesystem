@@ -27,17 +27,19 @@ public class GUIListener implements Listener {
         InventoryHolder holder = event.getInventory().getHolder();
         Player player = (Player) event.getPlayer();
         
-        if (holder instanceof PreTradeGUI) {
-            // Only return items from trade slots to prevent duplication
-            for (int slot : PreTradeGUI.getTradeSlots()) {
-                ItemStack item = event.getInventory().getItem(slot);
-                if (item != null && !item.getType().equals(Material.AIR)) {
-                    player.getInventory().addItem(item);
+        if (holder instanceof PreTradeGUI preTradeGui) {
+            // Solo devolver items si el GUI no fue cerrado por el botón de confirmar
+            if (!preTradeGui.wasClosedByButton()) {
+                for (int slot : PreTradeGUI.getTradeSlots()) {
+                    ItemStack item = event.getInventory().getItem(slot);
+                    if (item != null && !item.getType().equals(Material.AIR)) {
+                        player.getInventory().addItem(item);
+                    }
                 }
             }
         } else if (holder instanceof TradeGUI tradeGui) {
-            // Handle trade GUI close - do not return items unless the trade is cancelled
-            if (!tradeGui.isTradeCompleted()) {
+            // Solo cancelar el trade si no está completado y los items no han sido devueltos
+            if (!tradeGui.isTradeCompleted() && !tradeGui.isTradeCancelled() && !tradeGui.areItemsReturned()) {
                 tradeGui.cancelTrade(player);
             }
         }

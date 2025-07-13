@@ -8,6 +8,8 @@ import org.bukkit.entity.Player;
 import com.prismamc.trade.Plugin;
 import com.prismamc.trade.commands.base.AMyCommand;
 import com.prismamc.trade.gui.trade.PreTradeGUI;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class TradeCommand extends AMyCommand<Plugin> {
     
@@ -19,11 +21,23 @@ public class TradeCommand extends AMyCommand<Plugin> {
         this.setDescription("Open trade selection menu with another player");
         this.setUsage("/trade <player>");
         this.setAliases("t", "tradear");
+        
         if (this.registerCommand()) {
             plugin.getLogger().info("Trade command registered successfully!");
-        } else {
-            plugin.getLogger().warning("Failed to register trade command!");
         }
+    }
+
+    @Override
+    public List<String> tabComplete(CommandSender sender, String alias, String[] args) {
+        if (args.length == 1) {
+            String input = args[0].toLowerCase();
+            return Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .filter(name -> name.toLowerCase().startsWith(input))
+                .filter(name -> !name.equals(sender.getName())) // Excluir al propio jugador
+                .collect(Collectors.toList());
+        }
+        return super.tabComplete(sender, alias, args);
     }
 
     @Override
