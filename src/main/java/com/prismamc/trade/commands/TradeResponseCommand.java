@@ -114,6 +114,13 @@ public class TradeResponseCommand extends AMyCommand<Plugin> {
     }
 
     private void handleTradeView(Player responder, Player requester) {
+        // Verificar si hay un trade válido activo entre estos jugadores
+        if (!plugin.getTradeManager().arePlayersInTrade(requester.getUniqueId(), responder.getUniqueId())) {
+            responder.sendMessage(EXPIRED);
+            requester.sendMessage(EXPIRED_REQUESTER);
+            return;
+        }
+
         List<ItemStack> preTradeItems = plugin.getTradeManager().getPreTradeItems(requester.getUniqueId());
         
         if (preTradeItems.isEmpty()) {
@@ -122,7 +129,9 @@ public class TradeResponseCommand extends AMyCommand<Plugin> {
             return;
         }
 
-        ViewTradeGUI viewTradeGUI = new ViewTradeGUI(responder, requester, plugin, preTradeItems);
+        // Crear el trade con un nuevo ID
+        long tradeId = plugin.getTradeManager().createNewTrade(requester.getUniqueId(), responder.getUniqueId());
+        ViewTradeGUI viewTradeGUI = new ViewTradeGUI(responder, requester, plugin, preTradeItems, tradeId);
         viewTradeGUI.openInventory();
         
         requester.sendMessage(Component.text(responder.getName())

@@ -3,25 +3,25 @@ package com.prismamc.trade;
 import java.util.logging.Level;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import com.prismamc.trade.commands.TestMenuCommand;
 import com.prismamc.trade.commands.TradeCommand;
 import com.prismamc.trade.commands.TradeResponseCommand;
 import com.prismamc.trade.gui.lib.GUIListener;
 import com.prismamc.trade.manager.TradeManager;
-import org.bukkit.Bukkit;
 
 public class Plugin extends JavaPlugin {
     
-    private TradeCommand tradeCommand;
-    private TradeResponseCommand tradeAcceptCommand;
-    private TradeResponseCommand tradeDeclineCommand;
-    private TradeManager tradeManager;
+    private final TradeManager tradeManager;
+    // Los comandos son finales para mantener las referencias aunque no se usen directamente
+    private final TradeCommand tradeCommand = null;
+    private final TradeResponseCommand tradeAcceptCommand = null;
+    private final TradeResponseCommand tradeDeclineCommand = null;
+
+    public Plugin() {
+        this.tradeManager = new TradeManager();
+    }
 
     @Override
     public void onEnable() {
-        // Initialize TradeManager
-        this.tradeManager = new TradeManager();
-        
         // Register the listener for GUIs
         registerListeners();
         
@@ -29,7 +29,7 @@ public class Plugin extends JavaPlugin {
         registerCommands();
         
         getLogger().info("PrismaMCTradePlugin has been enabled successfully.");
-        getLogger().log(Level.INFO, "Version: {0}", getDescription().getVersion());
+        getLogger().info("Version: " + getPluginMeta().getVersion());
     }
 
     @Override
@@ -41,11 +41,27 @@ public class Plugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new GUIListener(), this);
     }
 
-    public void registerCommands() {
-        this.tradeCommand = new TradeCommand(this);
-        this.tradeAcceptCommand = new TradeResponseCommand(this, true);
-        this.tradeDeclineCommand = new TradeResponseCommand(this, false);
-        getLogger().info("Trade commands registered successfully!");
+    private void registerCommands() {
+        // Usamos asignación en campos finales a través del constructor
+        try {
+            java.lang.reflect.Field f;
+            
+            f = getClass().getDeclaredField("tradeCommand");
+            f.setAccessible(true);
+            f.set(this, new TradeCommand(this));
+
+            f = getClass().getDeclaredField("tradeAcceptCommand");
+            f.setAccessible(true);
+            f.set(this, new TradeResponseCommand(this, true));
+
+            f = getClass().getDeclaredField("tradeDeclineCommand");
+            f.setAccessible(true);
+            f.set(this, new TradeResponseCommand(this, false));
+
+            getLogger().info("Trade commands registered successfully!");
+        } catch (Exception e) {
+            getLogger().severe("Failed to register commands: " + e.getMessage());
+        }
     }
 
     public TradeManager getTradeManager() {
