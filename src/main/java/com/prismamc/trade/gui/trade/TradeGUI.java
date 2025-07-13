@@ -23,19 +23,12 @@ public class TradeGUI extends GUI {
     private static final int HEAD2_SLOT = 53;  // Right bottom corner
     private boolean trader1Accepted = false;
     private boolean trader2Accepted = false;
+    private boolean tradeCompleted = false;
 
     public TradeGUI(Player trader1, Player trader2) {
         super(trader1, "Trading with " + trader2.getName(), 54);
         this.trader1 = trader1;
         this.trader2 = trader2;
-    }
-
-    public void setInitialItem(Player trader, int index, ItemStack item) {
-        if (trader.equals(trader1) && index < TRADER1_SLOTS.length) {
-            inventory.setItem(TRADER1_SLOTS[index], item);
-        } else if (trader.equals(trader2) && index < TRADER2_SLOTS.length) {
-            inventory.setItem(TRADER2_SLOTS[index], item);
-        }
     }
 
     @Override
@@ -50,12 +43,8 @@ public class TradeGUI extends GUI {
         }
         
         // Set accept buttons
-        inventory.setItem(ACCEPT1_SLOT, new GUIItem(Material.RED_CONCRETE)
-            .setName("§cClick to Accept Trade")
-            .getItemStack());
-        inventory.setItem(ACCEPT2_SLOT, new GUIItem(Material.RED_CONCRETE)
-            .setName("§cClick to Accept Trade")
-            .getItemStack());
+        updateAcceptButton(ACCEPT1_SLOT, false);
+        updateAcceptButton(ACCEPT2_SLOT, false);
 
         // Set player heads
         inventory.setItem(HEAD1_SLOT, createPlayerHead(trader1));
@@ -73,15 +62,12 @@ public class TradeGUI extends GUI {
         }
     }
 
-    private void handleAcceptButtonClick(boolean isTrader1) {
-        if (isTrader1) {
-            trader1Accepted = !trader1Accepted;
-            updateAcceptButton(ACCEPT1_SLOT, trader1Accepted);
-        } else {
-            trader2Accepted = !trader2Accepted;
-            updateAcceptButton(ACCEPT2_SLOT, trader2Accepted);
+    public void setInitialItem(Player trader, int index, ItemStack item) {
+        if (trader.equals(trader1) && index < TRADER1_SLOTS.length) {
+            inventory.setItem(TRADER1_SLOTS[index], item);
+        } else if (trader.equals(trader2) && index < TRADER2_SLOTS.length) {
+            inventory.setItem(TRADER2_SLOTS[index], item);
         }
-        checkTradeCompletion();
     }
 
     private ItemStack createPlayerHead(Player player) {
@@ -97,33 +83,51 @@ public class TradeGUI extends GUI {
 
     @Override
     public void handleClick(InventoryClickEvent event) {
+        event.setCancelled(true); // Cancel all clicks by default
+        
         Player player = (Player) event.getWhoClicked();
         int slot = event.getSlot();
-
-        // Prevent clicking player heads or bottom glass
-        if (slot >= 45) {
-            event.setCancelled(true);
-            return;
-        }
 
         // Handle accept button clicks
         if(slot == ACCEPT1_SLOT && player.equals(trader1)) {
             handleAcceptButtonClick(true);
+            return;
         } else if(slot == ACCEPT2_SLOT && player.equals(trader2)) {
             handleAcceptButtonClick(false);
+            return;
         }
 
-        // Prevent clicking in the other player's slots
-        if(player.equals(trader1) && isInSlots(slot, TRADER2_SLOTS)) {
-            event.setCancelled(true);
-        } else if(player.equals(trader2) && isInSlots(slot, TRADER1_SLOTS)) {
-            event.setCancelled(true);
+        // Allow item placement only in player's own trade slots
+        boolean isTrader1Slot = isInSlots(slot, TRADER1_SLOTS);
+        boolean isTrader2Slot = isInSlots(slot, TRADER2_SLOTS);
+        
+        if (isTrader1Slot && player.equals(trader1)) {
+            event.setCancelled(false);
+        } else if (isTrader2Slot && player.equals(trader2)) {
+            event.setCancelled(false);
         }
 
         // Reset accept status when items are moved
-        if(isInSlots(slot, TRADER1_SLOTS) || isInSlots(slot, TRADER2_SLOTS)) {
+        if(!event.isCancelled() && (isTrader1Slot || isTrader2Slot)) {
             resetTradeAcceptance();
         }
+    }
+
+    private void handleAcceptButtonClick(boolean isTrader1) {
+        if (isTrader1) {
+            trader1Accepted = !trader1Accepted;
+            updateAcceptButton(ACCEPT1_SLOT, trader1Accepted);
+        } else {
+            trader2Accepted = !trader2Accepted;
+            updateAcceptButton(ACCEPT2_SLOT, trader2Accepted);
+        }
+        checkTradeCompletion();
+    }
+
+    private void updateAcceptButton(int slot, boolean accepted) {
+        inventory.setItem(slot, new GUIItem(accepted ? Material.GREEN_CONCRETE : Material.RED_CONCRETE)
+            .setName(accepted ? "§aReady to Trade" : "§cClick to Accept Trade")
+            .getItemStack());
     }
 
     private void resetTradeAcceptance() {
@@ -140,12 +144,6 @@ public class TradeGUI extends GUI {
         return false;
     }
 
-    private void updateAcceptButton(int slot, boolean accepted) {
-        inventory.setItem(slot, new GUIItem(accepted ? Material.GREEN_CONCRETE : Material.RED_CONCRETE)
-            .setName(accepted ? "§aReady to Trade" : "§cClick to Accept Trade")
-            .getItemStack());
-    }
-
     private void checkTradeCompletion() {
         if(trader1Accepted && trader2Accepted) {
             completeTrade();
@@ -153,6 +151,8 @@ public class TradeGUI extends GUI {
     }
 
     private void completeTrade() {
+        tradeCompleted = true;
+        
         // Execute the trade
         transferItems(TRADER1_SLOTS, trader2);
         transferItems(TRADER2_SLOTS, trader1);
@@ -167,6 +167,36 @@ public class TradeGUI extends GUI {
         trader2.sendMessage(successMessage);
     }
 
+    public void cancelTrade(Player canceledBy) {
+        if (tradeCompleted) return;
+
+        // Return items to their original owners
+        returnItems(TRADER1_SLOTS, trader1);
+        returnItems(TRADER2_SLOTS, trader2);
+
+        // Notify both players
+        String cancelMessage = "§c" + canceledBy.getName() + " cancelled the trade!";
+        trader1.sendMessage(cancelMessage);
+        trader2.sendMessage(cancelMessage);
+
+        // Close inventories for both players
+        if (trader1.getOpenInventory().getTopInventory().equals(inventory)) {
+            trader1.closeInventory();
+        }
+        if (trader2.getOpenInventory().getTopInventory().equals(inventory)) {
+            trader2.closeInventory();
+        }
+    }
+
+    private void returnItems(int[] slots, Player owner) {
+        for (int slot : slots) {
+            ItemStack item = inventory.getItem(slot);
+            if (item != null && !item.getType().equals(Material.AIR)) {
+                owner.getInventory().addItem(item.clone());
+            }
+        }
+    }
+
     private void transferItems(int[] slots, Player receiver) {
         for(int slot : slots) {
             ItemStack item = inventory.getItem(slot);
@@ -174,6 +204,10 @@ public class TradeGUI extends GUI {
                 receiver.getInventory().addItem(item.clone());
             }
         }
+    }
+
+    public boolean isTradeCompleted() {
+        return tradeCompleted;
     }
 
     public void openFor(Player player) {

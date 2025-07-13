@@ -27,10 +27,10 @@ public class PreTradeGUI extends GUI {
     };
     private static final int CONFIRM_SLOT = 44;
     private static final int INFO_SLOT = 40;
-    private final List<ItemStack> selectedItems = new ArrayList<>();
+    private List<ItemStack> selectedItems = new ArrayList<>();
 
     public PreTradeGUI(Player owner, Player target, Plugin plugin) {
-        super(owner, "Select Items to Trade", 54); // 6 rows for more space
+        super(owner, "Select Items to Trade", 54);
         this.tradeInitiator = owner;
         this.tradeTarget = target;
         this.plugin = plugin;
@@ -38,17 +38,15 @@ public class PreTradeGUI extends GUI {
 
     @Override
     protected void initializeItems() {
-        // Set confirm button
-        inventory.setItem(CONFIRM_SLOT, new GUIItem(Material.EMERALD)
+        GUIItem confirmButton = new GUIItem(Material.EMERALD)
             .setName("§aConfirm Trade Offer")
             .setLore(
                 "§7Click to confirm and send",
                 "§7trade request to " + tradeTarget.getName()
-            )
-            .getItemStack());
+            );
+        inventory.setItem(CONFIRM_SLOT, confirmButton.getItemStack());
 
-        // Add info sign in the middle
-        inventory.setItem(INFO_SLOT, new GUIItem(Material.OAK_SIGN)
+        GUIItem infoSign = new GUIItem(Material.OAK_SIGN)
             .setName("§eTrade Information")
             .setLore(
                 "§7Trading with: §f" + tradeTarget.getName(),
@@ -57,60 +55,60 @@ public class PreTradeGUI extends GUI {
                 "",
                 "§7Close the window to",
                 "§7cancel and get your items back."
-            )
-            .getItemStack());
+            );
+        inventory.setItem(INFO_SLOT, infoSign.getItemStack());
 
-        // Add minimal decoration
-        ItemStack border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-            .setName(" ")
-            .getItemStack();
+        GUIItem border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+            .setName(" ");
 
-        // Only add border at the bottom row
         for (int i = 45; i < 54; i++) {
             if (i != CONFIRM_SLOT && i != INFO_SLOT) {
-                inventory.setItem(i, border);
+                inventory.setItem(i, border.getItemStack());
             }
         }
     }
 
     @Override
     public void handleClick(InventoryClickEvent event) {
-        int slot = event.getRawSlot();
-
-        // Handle confirm button click
-        if (slot == CONFIRM_SLOT) {
+        int clickedSlot = event.getRawSlot();
+        Player player = (Player) event.getWhoClicked();
+        
+        if (clickedSlot == CONFIRM_SLOT) {
             event.setCancelled(true);
-            handleConfirmClick();
+            if (player.equals(tradeInitiator)) {
+                handleConfirmClick();
+            }
+            return;
         }
-        // Cancel clicks on decoration items
-        else if (slot == INFO_SLOT || (slot >= 45 && slot < 54)) {
+        
+        if (clickedSlot < inventory.getSize() && !isTradeSlot(clickedSlot)) {
             event.setCancelled(true);
+            return;
         }
-        // Allow normal inventory interaction in trade slots
-        else if (slot < inventory.getSize() && !isTradeSlot(slot)) {
+        
+        if (clickedSlot == INFO_SLOT || (clickedSlot >= 45 && clickedSlot < 54)) {
             event.setCancelled(true);
         }
     }
 
     private void handleConfirmClick() {
-        boolean hasItems = false;
         selectedItems.clear();
+        boolean hasItems = false;
 
-        // Collect all items from trade slots
         for (int slot : TRADE_SLOTS) {
             ItemStack item = inventory.getItem(slot);
-            if (item != null && item.getType() != Material.AIR) {
+            if (item != null && !item.getType().equals(Material.AIR)) {
                 hasItems = true;
                 selectedItems.add(item.clone());
             }
         }
 
         if (!hasItems) {
-            owner.sendMessage("§cYou must select at least one item to trade!");
+            owner.sendMessage(Component.text("You must select at least one item to trade!")
+                .color(NamedTextColor.RED));
             return;
         }
 
-        // Store items and send request
         plugin.getTradeManager().storePreTradeItems(owner.getUniqueId(), selectedItems);
         owner.closeInventory();
         sendTradeRequest();
@@ -124,13 +122,11 @@ public class PreTradeGUI extends GUI {
     }
 
     private void sendTradeRequest() {
-        // Notify the trade initiator
         tradeInitiator.sendMessage(Component.text("Your trade request has been sent to ")
             .color(NamedTextColor.GREEN)
             .append(Component.text(tradeTarget.getName())
             .color(NamedTextColor.WHITE)));
         
-        // Send interactive request to target
         tradeTarget.sendMessage(Component.empty());
         tradeTarget.sendMessage(Component.text("⚡ New Trade Request!")
             .color(NamedTextColor.YELLOW)
@@ -141,24 +137,28 @@ public class PreTradeGUI extends GUI {
             .color(NamedTextColor.GRAY)));
         tradeTarget.sendMessage(Component.empty());
         
-        // Send accept/decline buttons
-        tradeTarget.sendMessage(
-            Component.text("[Accept]")
-                .color(NamedTextColor.GREEN)
-                .decorate(TextDecoration.BOLD)
-                .clickEvent(ClickEvent.runCommand("/tradeaccept " + tradeInitiator.getName()))
-                .append(Component.text(" ")
-                .color(NamedTextColor.WHITE)
-                .decoration(TextDecoration.BOLD, false))
-                .append(Component.text("[Decline]")
-                .color(NamedTextColor.RED)
-                .decorate(TextDecoration.BOLD)
-                .clickEvent(ClickEvent.runCommand("/tradedecline " + tradeInitiator.getName())))
-        );
+        Component acceptButton = Component.text("[Accept]")
+            .color(NamedTextColor.GREEN)
+            .decorate(TextDecoration.BOLD)
+            .clickEvent(ClickEvent.runCommand("/tradeaccept " + tradeInitiator.getName()));
+            
+        Component declineButton = Component.text("[Decline]")
+            .color(NamedTextColor.RED)
+            .decorate(TextDecoration.BOLD)
+            .clickEvent(ClickEvent.runCommand("/tradedecline " + tradeInitiator.getName()));
+            
+        tradeTarget.sendMessage(acceptButton
+            .append(Component.text(" ").color(NamedTextColor.WHITE))
+            .append(declineButton));
+            
         tradeTarget.sendMessage(Component.empty());
     }
 
     public List<ItemStack> getSelectedItems() {
         return selectedItems;
+    }
+
+    public static int[] getTradeSlots() {
+        return TRADE_SLOTS;
     }
 }
