@@ -2,29 +2,56 @@ package com.prismamc.trade;
 
 import java.util.logging.Level;
 import org.bukkit.plugin.java.JavaPlugin;
-import com.prismamc.trade.gui.GUIListener;
+
 import com.prismamc.trade.commands.TestMenuCommand;
 import com.prismamc.trade.commands.TradeCommand;
+import com.prismamc.trade.commands.TradeResponseCommand;
+import com.prismamc.trade.gui.lib.GUIListener;
+import com.prismamc.trade.manager.TradeManager;
+import org.bukkit.Bukkit;
 
 public class Plugin extends JavaPlugin {
     
-    private TestMenuCommand testMenuCommand;
     private TradeCommand tradeCommand;
+    private TradeResponseCommand tradeAcceptCommand;
+    private TradeResponseCommand tradeDeclineCommand;
+    private TradeManager tradeManager;
 
     @Override
     public void onEnable() {
-        // Registrar el listener de GUIs
-        getServer().getPluginManager().registerEvents(new GUIListener(), this);
+        // Initialize TradeManager
+        this.tradeManager = new TradeManager();
         
-        // Register commands
-        this.tradeCommand = new TradeCommand(this);
+        // Register the listener for GUIs
+        registerListeners();
         
-        getLogger().info("PrismaMCTradePlugin ha sido activado con éxito (modo testeo).");
+        // Register commands when server is fully loaded
+        Bukkit.getScheduler().runTask(this, () -> {
+            registerCommands();
+            getLogger().info("Registering commands...");
+        });
+        
+        getLogger().info("PrismaMCTradePlugin has been enabled successfully.");
         getLogger().log(Level.INFO, "Version: {0}", getDescription().getVersion());
     }
 
     @Override
     public void onDisable() {
-        getLogger().info("PrismaMCTradePlugin ha sido desactivado.");
+        getLogger().info("PrismaMCTradePlugin has been disabled.");
+    }
+
+    public void registerListeners() {
+        getServer().getPluginManager().registerEvents(new GUIListener(), this);
+    }
+
+    public void registerCommands() {
+        this.tradeCommand = new TradeCommand(this);
+        this.tradeAcceptCommand = new TradeResponseCommand(this, true);
+        this.tradeDeclineCommand = new TradeResponseCommand(this, false);
+        getLogger().info("Trade commands registered successfully!");
+    }
+
+    public TradeManager getTradeManager() {
+        return tradeManager;
     }
 }

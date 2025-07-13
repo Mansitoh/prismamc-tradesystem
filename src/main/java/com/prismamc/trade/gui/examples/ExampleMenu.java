@@ -2,9 +2,10 @@ package com.prismamc.trade.gui.examples;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import com.prismamc.trade.gui.GUI;
-import com.prismamc.trade.gui.GUIItem;
 import org.bukkit.event.inventory.InventoryClickEvent;
+
+import com.prismamc.trade.gui.lib.GUI;
+import com.prismamc.trade.gui.lib.GUIItem;
 
 public class ExampleMenu extends GUI {
     

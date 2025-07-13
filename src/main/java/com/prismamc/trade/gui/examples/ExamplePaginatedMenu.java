@@ -2,8 +2,10 @@ package com.prismamc.trade.gui.examples;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import com.prismamc.trade.gui.PaginatedGUI;
-import com.prismamc.trade.gui.GUIItem;
+
+import com.prismamc.trade.gui.lib.GUIItem;
+import com.prismamc.trade.gui.lib.PaginatedGUI;
+
 import java.util.Arrays;
 import java.util.List;
 

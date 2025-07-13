@@ -1,4 +1,4 @@
-package com.prismamc.trade.gui;
+package com.prismamc.trade.gui.lib;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;

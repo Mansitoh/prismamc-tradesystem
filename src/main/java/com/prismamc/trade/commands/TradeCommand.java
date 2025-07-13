@@ -6,16 +6,24 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import com.prismamc.trade.Plugin;
-import com.prismamc.trade.gui.TradeGUI;
 import com.prismamc.trade.commands.base.AMyCommand;
+import com.prismamc.trade.gui.trade.PreTradeGUI;
 
 public class TradeCommand extends AMyCommand<Plugin> {
     
+    private final Plugin plugin;
+
     public TradeCommand(Plugin plugin) {
         super(plugin, "trade");
-        this.setDescription("Open a trade menu with another player");
+        this.plugin = plugin;
+        this.setDescription("Open trade selection menu with another player");
         this.setUsage("/trade <player>");
-        this.registerCommand();
+        this.setAliases("t", "tradear");
+        if (this.registerCommand()) {
+            plugin.getLogger().info("Trade command registered successfully!");
+        } else {
+            plugin.getLogger().warning("Failed to register trade command!");
+        }
     }
 
     @Override
@@ -43,15 +51,10 @@ public class TradeCommand extends AMyCommand<Plugin> {
             return true;
         }
 
-        // Create and open trade GUI
-        TradeGUI tradeGUI = new TradeGUI(player, target);
-        tradeGUI.openInventory();
-        target.openInventory(tradeGUI.getInventory());
-
-        // Send messages
-        player.sendMessage(ChatColor.GREEN + "Opening trade with " + target.getName());
-        target.sendMessage(ChatColor.GREEN + player.getName() + " wants to trade with you!");
-
+        // Open pre-trade GUI for item selection
+        PreTradeGUI preTradeGUI = new PreTradeGUI(player, target, plugin);
+        preTradeGUI.openInventory();
+        
         return true;
     }
 }
