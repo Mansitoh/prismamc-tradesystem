@@ -243,30 +243,42 @@ public class TradeGUI extends GUI {
     }
 
     private void transferItems(Player receiver, List<ItemStack> items) {
+        boolean inventoryFull = false;
+        
         for (ItemStack item : items) {
             if (item != null && !item.getType().equals(Material.AIR)) {
                 HashMap<Integer, ItemStack> leftover = receiver.getInventory().addItem(item.clone());
                 if (!leftover.isEmpty()) {
+                    inventoryFull = true;
                     for (ItemStack drop : leftover.values()) {
                         receiver.getWorld().dropItemNaturally(receiver.getLocation(), drop);
                     }
-                    receiver.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
                 }
             }
+        }
+        
+        if (inventoryFull) {
+            receiver.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
         }
     }
 
     private void returnItemsToPlayer(Player player, List<ItemStack> items) {
+        boolean inventoryFull = false;
+        
         for (ItemStack item : items) {
             if (item != null && !item.getType().equals(Material.AIR)) {
                 HashMap<Integer, ItemStack> leftover = player.getInventory().addItem(item.clone());
                 if (!leftover.isEmpty()) {
+                    inventoryFull = true;
                     for (ItemStack drop : leftover.values()) {
                         player.getWorld().dropItemNaturally(player.getLocation(), drop);
                     }
-                    player.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
                 }
             }
+        }
+        
+        if (inventoryFull) {
+            player.sendMessage("§eAlgunos items fueron dropeados al suelo porque tu inventario está lleno!");
         }
     }
 
