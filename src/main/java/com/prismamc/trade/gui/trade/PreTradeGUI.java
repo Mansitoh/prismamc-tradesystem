@@ -21,6 +21,7 @@ public class PreTradeGUI extends GUI {
     private final Plugin plugin;
     private final boolean isResponse;
     private final long tradeId;
+    private int currentPage = 0;
     private static final int[] TRADE_SLOTS = {
         0, 1, 2, 3, 4, 5, 6, 7, 8,
         9, 10, 11, 12, 13, 14, 15, 16, 17,
@@ -29,6 +30,9 @@ public class PreTradeGUI extends GUI {
     };
     private static final int CONFIRM_SLOT = 49;
     private static final int INFO_SLOT = 40;
+    private static final int PREV_PAGE_SLOT = 36;
+    private static final int NEXT_PAGE_SLOT = 44;
+    private static final int ITEMS_PER_PAGE = 36;
     private final List<ItemStack> selectedItems;
     private boolean closedByButton;
 
@@ -57,6 +61,19 @@ public class PreTradeGUI extends GUI {
             return;
         }
 
+        // Agregar bordes decorativos primero
+        GUIItem border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+            .setName(" ");
+            
+        for (int i = 36; i < 54; i++) {
+            if (i != 40 && i != 49 && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT) {
+                inventory.setItem(i, border.getItemStack());
+            }
+        }
+
+        // Botones de paginación
+        updatePaginationButtons();
+
         // Agregar botón de confirmar en la parte inferior
         GUIItem confirmButton = new GUIItem(Material.EMERALD)
             .setName(isResponse ? "§aConfirmar tus items" : "§aConfirmar oferta de trade")
@@ -79,6 +96,7 @@ public class PreTradeGUI extends GUI {
             .setLore(
                 "§7" + (isResponse ? "Respondiendo a" : "Tradeando con") + ": §f" + (isResponse ? initiator.getName() : target.getName()),
                 "§7ID del Trade: §f" + tradeId,
+                "§7Página: §f" + (currentPage + 1),
                 "",
                 "§7Coloca tus items en los",
                 "§7slots disponibles arriba",
@@ -86,15 +104,44 @@ public class PreTradeGUI extends GUI {
                 "§7Click en el botón verde",
                 "§7para confirmar"
             );
-        inventory.setItem(INFO_SLOT,infoSign.getItemStack());
+        inventory.setItem(INFO_SLOT, infoSign.getItemStack());
 
-        // Agregar bordes decorativos
-        GUIItem border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-            .setName(" ");
-            
-        for (int i = 36; i < 54; i++) {
-            if (i != 40 && i != 49) {
-                inventory.setItem(i, border.getItemStack());
+        // Restaurar items de la página actual
+        updatePageItems();
+    }
+
+    private void updatePaginationButtons() {
+        GUIItem prevPage = new GUIItem(Material.ARROW)
+            .setName("§ePágina Anterior")
+            .setLore("§7Click para ir a la página anterior");
+        
+        GUIItem nextPage = new GUIItem(Material.ARROW)
+            .setName("§eSiguiente Página")
+            .setLore("§7Click para ir a la siguiente página");
+
+        if (currentPage > 0) {
+            inventory.setItem(PREV_PAGE_SLOT, prevPage.getItemStack());
+        } else {
+            inventory.setItem(PREV_PAGE_SLOT, new GUIItem(Material.GRAY_STAINED_GLASS_PANE).setName(" ").getItemStack());
+        }
+
+        inventory.setItem(NEXT_PAGE_SLOT, nextPage.getItemStack());
+
+    }
+
+
+    private void updatePageItems() {
+        // Limpiar slots de items
+        for (int slot : TRADE_SLOTS) {
+            inventory.setItem(slot, null);
+        }
+
+        // Mostrar items de la página actual
+        int startIndex = currentPage * ITEMS_PER_PAGE;
+        for (int i = 0; i < ITEMS_PER_PAGE && startIndex + i < selectedItems.size(); i++) {
+            ItemStack item = selectedItems.get(startIndex + i);
+            if (item != null && !item.getType().equals(Material.AIR)) {
+                inventory.setItem(TRADE_SLOTS[i], item.clone());
             }
         }
     }
@@ -111,6 +158,23 @@ public class PreTradeGUI extends GUI {
             }
             return;
         }
+
+        // Guardar los items de la página actual antes de cambiar de página
+        if (clickedSlot == PREV_PAGE_SLOT || clickedSlot == NEXT_PAGE_SLOT) {
+            event.setCancelled(true);
+            saveCurrentPageItems();
+            
+            if (clickedSlot == PREV_PAGE_SLOT && currentPage > 0) {
+                currentPage--;
+            } else if (clickedSlot == NEXT_PAGE_SLOT) {
+                currentPage++;
+            }
+            
+            updatePaginationButtons();
+            updatePageItems();
+            initializeItems();
+            return;
+        }
         
         if (clickedSlot < inventory.getSize() && !isTradeSlot(clickedSlot)) {
             event.setCancelled(true);
@@ -119,6 +183,38 @@ public class PreTradeGUI extends GUI {
         
         if (clickedSlot == INFO_SLOT || (clickedSlot >= 45 && clickedSlot < 54)) {
             event.setCancelled(true);
+        }
+
+        // Si es un slot válido de trade, actualizar la lista de items
+        if (isTradeSlot(clickedSlot)) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                saveCurrentPageItems();
+                updatePaginationButtons();
+            });
+        }
+    }
+
+    private void saveCurrentPageItems() {
+        int startIndex = currentPage * ITEMS_PER_PAGE;
+        
+        // Asegurarnos que la lista tenga suficiente espacio
+        while (selectedItems.size() < startIndex + ITEMS_PER_PAGE) {
+            selectedItems.add(null);
+        }
+        
+        // Guardar o actualizar los items de la página actual
+        for (int i = 0; i < ITEMS_PER_PAGE; i++) {
+            ItemStack item = inventory.getItem(TRADE_SLOTS[i]);
+            selectedItems.set(startIndex + i, item != null ? item.clone() : null);
+        }
+        
+        // Limpiar nulls del final de la lista
+        for (int i = selectedItems.size() - 1; i >= 0; i--) {
+            if (selectedItems.get(i) == null) {
+                selectedItems.remove(i);
+            } else {
+                break;
+            }
         }
     }
 
@@ -130,18 +226,11 @@ public class PreTradeGUI extends GUI {
             return;
         }
 
-        selectedItems.clear();
-        boolean hasItems = false;
-
-        for (int slot : TRADE_SLOTS) {
-            ItemStack item = inventory.getItem(slot);
-            if (item != null && !item.getType().equals(Material.AIR)) {
-                hasItems = true;
-                selectedItems.add(item.clone());
-            }
-        }
-
-        if (!hasItems) {
+        // Guardar los items de la página actual antes de confirmar
+        saveCurrentPageItems();
+        
+        // Verificar si hay items
+        if (selectedItems.isEmpty()) {
             owner.sendMessage(Component.text("¡Debes seleccionar al menos un item para tradear!")
                 .color(NamedTextColor.RED));
             return;
@@ -221,6 +310,8 @@ public class PreTradeGUI extends GUI {
     }
 
     public List<ItemStack> getSelectedItems() {
+        // Asegurarse de guardar los items de la página actual antes de retornar la lista
+        saveCurrentPageItems();
         return new ArrayList<>(selectedItems);
     }
 
