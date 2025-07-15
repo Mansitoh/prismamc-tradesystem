@@ -3,19 +3,24 @@ package com.prismamc.trade.gui.lib;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-
+import org.bukkit.event.inventory.InventoryClickEvent;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
-
-import org.bukkit.event.inventory.InventoryClickEvent;
+import java.util.WeakHashMap;
+import java.util.Map;
 
 public class GUIItem {
     private ItemStack item;
     private Consumer<ClickContext> clickHandler;
+    private static final Map<ItemStack, ItemStack> itemCache = new WeakHashMap<>();
 
     public GUIItem(Material material) {
-        this.item = new ItemStack(material);
+        this.item = createItem(material);
+    }
+
+    private static ItemStack createItem(Material material) {
+        return new ItemStack(material);
     }
 
     public GUIItem setName(String name) {
@@ -52,22 +57,62 @@ public class GUIItem {
     }
 
     public ItemStack getItemStack() {
-        return item.clone();
+        ItemStack cachedItem = itemCache.get(item);
+        if (cachedItem == null) {
+            cachedItem = item.clone();
+            itemCache.put(item, cachedItem);
+        }
+        return cachedItem.clone();
     }
 
     public static class ClickContext {
         private final GUI gui;
         private final int slot;
         private final InventoryClickEvent event;
+        private boolean processed;
 
         public ClickContext(GUI gui, int slot, InventoryClickEvent event) {
             this.gui = gui;
             this.slot = slot;
             this.event = event;
+            this.processed = false;
         }
 
-        public GUI getGui() { return gui; }
-        public int getSlot() { return slot; }
-        public InventoryClickEvent getEvent() { return event; }
+        public GUI getGui() { 
+            return gui; 
+        }
+        
+        public int getSlot() { 
+            return slot; 
+        }
+        
+        public InventoryClickEvent getEvent() { 
+            return event; 
+        }
+
+        public void markProcessed() {
+            this.processed = true;
+        }
+
+        public boolean isProcessed() {
+            return processed;
+        }
+
+        public boolean isShiftClick() {
+            return event.isShiftClick();
+        }
+
+        public boolean isRightClick() {
+            return event.isRightClick();
+        }
+
+        public boolean isLeftClick() {
+            return event.isLeftClick();
+        }
+    }
+
+    // Método para limpiar el caché cuando sea necesario
+    public static void clearCache() {
+        itemCache.clear();
     }
 }

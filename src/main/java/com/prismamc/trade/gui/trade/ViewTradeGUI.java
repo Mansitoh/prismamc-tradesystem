@@ -11,6 +11,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class ViewTradeGUI extends GUI {
     private final Player tradeInitiator;
@@ -42,56 +43,73 @@ public class ViewTradeGUI extends GUI {
 
     @Override
     protected void initializeItems() {
-        if (!plugin.getTradeManager().isTradeValid(tradeId)) {
-            owner.sendMessage(Component.text("Este trade ya no es válido!")
-                .color(NamedTextColor.RED));
-            owner.closeInventory();
-            return;
-        }
+        plugin.getTradeManager().isTradeValid(tradeId)
+            .thenAccept(isValid -> {
+                if (!isValid) {
+                    // Volver al hilo principal para mensajes y operaciones de inventario
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        owner.sendMessage(Component.text("Este trade ya no es válido!")
+                            .color(NamedTextColor.RED));
+                        owner.closeInventory();
+                    });
+                    return;
+                }
 
-        // Add decorative border first
-        ItemStack border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-            .setName(" ")
-            .getItemStack();
-            
-        for (int i = 36; i < 54; i++) {
-            if (i != ADD_ITEMS_SLOT && i != INFO_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT) {
-                inventory.setItem(i, border);
-            }
-        }
+                // Volver al hilo principal para operaciones de inventario
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    // Add decorative border first
+                    ItemStack border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+                        .setName(" ")
+                        .getItemStack();
+                        
+                    for (int i = 36; i < 54; i++) {
+                        if (i != ADD_ITEMS_SLOT && i != INFO_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT) {
+                            inventory.setItem(i, border);
+                        }
+                    }
 
-        // Actualizar botones de paginación
-        updatePaginationButtons();
-        
-        // Add button to add own items
-        GUIItem addItemsButton = new GUIItem(Material.EMERALD)
-            .setName("§aAgregar tus Items al Trade")
-            .setLore(
-                "§7Click para seleccionar los items",
-                "§7que quieres tradear con",
-                "§f" + tradeInitiator.getName()
-            );
-        inventory.setItem(ADD_ITEMS_SLOT, addItemsButton.getItemStack());
+                    // Actualizar botones de paginación
+                    updatePaginationButtons();
+                    
+                    // Add button to add own items
+                    GUIItem addItemsButton = new GUIItem(Material.EMERALD)
+                        .setName("§aAgregar tus Items al Trade")
+                        .setLore(
+                            "§7Click para seleccionar los items",
+                            "§7que quieres tradear con",
+                            "§f" + tradeInitiator.getName()
+                        );
+                    inventory.setItem(ADD_ITEMS_SLOT, addItemsButton.getItemStack());
 
-        // Agregar cartel informativo en el centro
-        GUIItem infoSign = new GUIItem(Material.OAK_SIGN)
-            .setName("§eInformación del Trade")
-            .setLore(
-                "§7Viendo items de: §f" + tradeInitiator.getName(),
-                "§7ID del Trade: §f" + tradeId,
-                "§7Página: §f" + (currentPage + 1)
-            );
-        inventory.setItem(INFO_SLOT, infoSign.getItemStack());
+                    // Agregar cartel informativo en el centro
+                    GUIItem infoSign = new GUIItem(Material.OAK_SIGN)
+                        .setName("§eInformación del Trade")
+                        .setLore(
+                            "§7Viendo items de: §f" + tradeInitiator.getName(),
+                            "§7ID del Trade: §f" + tradeId,
+                            "§7Página: §f" + (currentPage + 1)
+                        );
+                    inventory.setItem(INFO_SLOT, infoSign.getItemStack());
 
-        // Limpiar y mostrar items de la página actual
-        for (int slot : TRADE_SLOTS) {
-            inventory.setItem(slot, null);
-        }
+                    // Limpiar y mostrar items de la página actual
+                    for (int slot : TRADE_SLOTS) {
+                        inventory.setItem(slot, null);
+                    }
 
-        int startIndex = currentPage * ITEMS_PER_PAGE;
-        for (int i = 0; i < ITEMS_PER_PAGE && startIndex + i < initiatorItems.size(); i++) {
-            inventory.setItem(TRADE_SLOTS[i], initiatorItems.get(startIndex + i));
-        }
+                    int startIndex = currentPage * ITEMS_PER_PAGE;
+                    for (int i = 0; i < ITEMS_PER_PAGE && startIndex + i < initiatorItems.size(); i++) {
+                        inventory.setItem(TRADE_SLOTS[i], initiatorItems.get(startIndex + i));
+                    }
+                });
+            })
+            .exceptionally(throwable -> {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    owner.sendMessage(Component.text("Error al verificar el trade: " + throwable.getMessage())
+                        .color(NamedTextColor.RED));
+                    owner.closeInventory();
+                });
+                return null;
+            });
     }
 
     private void updatePaginationButtons() {
@@ -141,16 +159,32 @@ public class ViewTradeGUI extends GUI {
         }
         
         if (clickedSlot == ADD_ITEMS_SLOT && player.equals(tradeTarget)) {
-            if (!plugin.getTradeManager().isTradeValid(tradeId)) {
-                tradeTarget.sendMessage(Component.text("Este trade ya no es válido!")
-                    .color(NamedTextColor.RED));
-                tradeTarget.closeInventory();
-                return;
-            }
+            plugin.getTradeManager().isTradeValid(tradeId)
+                .thenAccept(isValid -> {
+                    if (!isValid) {
+                        // Volver al hilo principal para mensajes y operaciones de inventario
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            tradeTarget.sendMessage(Component.text("Este trade ya no es válido!")
+                                .color(NamedTextColor.RED));
+                            tradeTarget.closeInventory();
+                        });
+                        return;
+                    }
 
-            // Open PreTradeGUI for target to select items
-            PreTradeGUI preTradeGUI = new PreTradeGUI(tradeTarget, tradeInitiator, plugin, true, tradeId);
-            preTradeGUI.openInventory();
+                    // Volver al hilo principal para operaciones de inventario
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        // Open PreTradeGUI for target to select items
+                        PreTradeGUI preTradeGUI = new PreTradeGUI(tradeTarget, tradeInitiator, plugin, true, tradeId);
+                        preTradeGUI.openInventory();
+                    });
+                })
+                .exceptionally(throwable -> {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        tradeTarget.sendMessage(Component.text("Error al verificar el trade: " + throwable.getMessage())
+                            .color(NamedTextColor.RED));
+                    });
+                    return null;
+                });
         }
     }
 }

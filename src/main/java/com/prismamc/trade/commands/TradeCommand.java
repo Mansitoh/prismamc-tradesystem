@@ -65,9 +65,25 @@ public class TradeCommand extends AMyCommand<Plugin> {
             return true;
         }
 
-        // Open pre-trade GUI for item selection
-        PreTradeGUI preTradeGUI = new PreTradeGUI(player, target, plugin);
-        preTradeGUI.openInventory();
+        // Verificar si ya existe un trade entre estos jugadores
+        plugin.getTradeManager().arePlayersInTrade(player.getUniqueId(), target.getUniqueId())
+            .thenAccept(inTrade -> {
+                if (inTrade) {
+                    player.sendMessage(ChatColor.RED + "Ya existe un trade activo con este jugador!");
+                    return;
+                }
+                
+                // Asegurarnos de que la apertura del GUI se realice en el hilo principal
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    PreTradeGUI preTradeGUI = new PreTradeGUI(player, target, plugin);
+                    preTradeGUI.openInventory();
+                });
+            })
+            .exceptionally(throwable -> {
+                plugin.getLogger().severe("Error checking trade status: " + throwable.getMessage());
+                player.sendMessage(ChatColor.RED + "An error occurred while processing your trade request.");
+                return null;
+            });
         
         return true;
     }

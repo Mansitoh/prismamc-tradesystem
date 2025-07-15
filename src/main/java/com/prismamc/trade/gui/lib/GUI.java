@@ -5,20 +5,32 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.HandlerList;
+import com.prismamc.trade.Plugin;
+import java.util.concurrent.atomic.AtomicBoolean;
+import net.kyori.adventure.text.Component;
 
 public abstract class GUI implements InventoryHolder {
-    protected final Inventory inventory;
+    protected Inventory inventory;
     protected final Player owner;
+    protected final Plugin plugin;
     protected String title;
     protected int size;
+    private final AtomicBoolean isInitialized;
+    private final AtomicBoolean isClosed;
 
     public GUI(Player owner, String title, int size) {
         this.owner = owner;
         this.title = title;
         this.size = size;
-        // Create inventory after all fields are initialized
-        Inventory inv = Bukkit.createInventory(this, size, title);
-        this.inventory = inv;
+        this.plugin = (Plugin) Bukkit.getPluginManager().getPlugin("PrismaMCTradePlugin");
+        this.isInitialized = new AtomicBoolean(false);
+        this.isClosed = new AtomicBoolean(false);
+        
+        // Crear el inventario después de inicializar todos los campos
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            this.inventory = Bukkit.createInventory(this, size, Component.text(title));
+        });
     }
 
     protected abstract void initializeItems();
@@ -31,7 +43,72 @@ public abstract class GUI implements InventoryHolder {
     }
 
     public void openInventory() {
-        initializeItems(); // Move initialization here
-        owner.openInventory(inventory);
+        if (!isInitialized.get()) {
+            initializeItems();
+            isInitialized.set(true);
+        }
+        
+        if (!isClosed.get()) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                owner.openInventory(inventory);
+                // Registrar este GUI en el listener
+                GUIListener listener = findGUIListener();
+                if (listener != null) {
+                    listener.registerGUI(owner, this);
+                }
+            });
+        }
+    }
+
+    public void closeInventory() {
+        if (!isClosed.get()) {
+            isClosed.set(true);
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                owner.closeInventory();
+                // Desregistrar este GUI del listener
+                GUIListener listener = findGUIListener();
+                if (listener != null) {
+                    listener.unregisterGUI(owner);
+                }
+            });
+        }
+    }
+
+    public void onClose(Player player) {
+        isClosed.set(true);
+    }
+
+    private GUIListener findGUIListener() {
+        return HandlerList.getRegisteredListeners(plugin).stream()
+            .filter(handler -> handler.getListener() instanceof GUIListener)
+            .map(handler -> (GUIListener) handler.getListener())
+            .findFirst()
+            .orElse(null);
+    }
+
+    public Plugin getPlugin() {
+        return plugin;
+    }
+
+    public Player getOwner() {
+        return owner;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public int getSize() {
+        return size;
+    }
+
+    public boolean isClosed() {
+        return isClosed.get();
+    }
+
+    protected void markDirty() {
+        if (!isClosed.get()) {
+            plugin.getServer().getScheduler().runTask(plugin, this::initializeItems);
+        }
     }
 }

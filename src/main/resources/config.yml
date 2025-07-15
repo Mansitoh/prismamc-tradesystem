@@ -1,0 +1,11 @@
+# MongoDB Configuration
+mongodb:
+  host: localhost
+  port: 27017
+  database: prismamc_trade
+  collection: trades
+  username: ""
+  password: ""
+  auth-database: admin
+  connection-uri: "" # Optional: if provided, will override host/port settings
+
