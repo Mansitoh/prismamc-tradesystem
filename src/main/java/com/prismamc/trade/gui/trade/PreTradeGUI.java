@@ -1,21 +1,19 @@
 package com.prismamc.trade.gui.trade;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import com.prismamc.trade.Plugin;
 import com.prismamc.trade.gui.lib.GUI;
@@ -24,7 +22,6 @@ import com.prismamc.trade.manager.TradeManager;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
-import net.kyori.adventure.text.format.NamedTextColor;
 
 public class PreTradeGUI extends GUI {
     private final Player initiator;
@@ -32,45 +29,67 @@ public class PreTradeGUI extends GUI {
     private final boolean isResponse;
     private long tradeId;
     private int currentPage = 0;
+
+    // Optimized slot management
     private static final int[] TRADE_SLOTS = {
-        0, 1, 2, 3, 4, 5, 6, 7, 8,
-        9, 10, 11, 12, 13, 14, 15, 16, 17,
-        18, 19, 20, 21, 22, 23, 24, 25, 26,
-        27, 28, 29, 30, 31, 32, 33, 34, 35
+            0, 1, 2, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 12, 13, 14, 15, 16, 17,
+            18, 19, 20, 21, 22, 23, 24, 25, 26,
+            27, 28, 29, 30, 31, 32, 33, 34, 35
     };
+
     private static final int CONFIRM_SLOT = 49;
     private static final int INFO_SLOT = 40;
     private static final int PREV_PAGE_SLOT = 36;
     private static final int NEXT_PAGE_SLOT = 44;
     private static final int ITEMS_PER_PAGE = 36;
+
+    // Optimized state management
     private final Map<Integer, ItemStack> itemSlots;
-    private boolean closedByButton;
-    private final Set<Integer> pendingUpdates;
-    private long lastUpdateTime;
+    private final AtomicBoolean closedByButton;
+    private final AtomicBoolean isProcessing;
+    private final AtomicBoolean isDirty;
+
+    // Static items cache for performance
+    private static final Map<String, ItemStack> CACHED_BORDER_ITEMS = new ConcurrentHashMap<>();
+
+    static {
+        // Pre-cache common items
+        CACHED_BORDER_ITEMS.put("border", new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+                .setName("§7 ").getItemStack());
+        CACHED_BORDER_ITEMS.put("prevPage", new GUIItem(Material.ARROW)
+                .setName("§ePágina Anterior")
+                .setLore("§7Click para ir a la página anterior").getItemStack());
+        CACHED_BORDER_ITEMS.put("nextPage", new GUIItem(Material.ARROW)
+                .setName("§eSiguiente Página")
+                .setLore("§7Click para ir a la siguiente página").getItemStack());
+        CACHED_BORDER_ITEMS.put("disabledPage", new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+                .setName("§7 ").getItemStack());
+    }
 
     public PreTradeGUI(Player owner, Player target, Plugin plugin) {
         this(owner, target, plugin, false, -1);
     }
 
     public PreTradeGUI(Player owner, Player target, Plugin plugin, boolean isResponse, long tradeId) {
-        super(owner, isResponse ? "Selecciona tus items para el trade" : "Selecciona los items a tradear", 54);
+        super(owner, getGUITitle(plugin, owner, isResponse), 54);
         this.initiator = owner;
         this.target = target;
         this.isResponse = isResponse;
         this.tradeId = tradeId;
         this.itemSlots = new ConcurrentHashMap<>();
-        this.closedByButton = false;
-        this.pendingUpdates = Collections.synchronizedSet(new HashSet<>());
-        this.lastUpdateTime = 0;
+        this.closedByButton = new AtomicBoolean(false);
+        this.isProcessing = new AtomicBoolean(false);
+        this.isDirty = new AtomicBoolean(false);
+    }
+
+    private static String getGUITitle(Plugin plugin, Player player, boolean isResponse) {
+        String key = isResponse ? "pretrade.gui.title.response" : "pretrade.gui.title.new";
+        return plugin.getMessageManager().getRawMessage(player, key);
     }
 
     @Override
     protected void initializeItems() {
-        // Sólo inicializar si el inventario ya está creado
-        if (inventory == null) {
-            return;
-        }
-        
         if (isResponse && tradeId != -1) {
             validateAndInitialize();
         } else {
@@ -79,29 +98,55 @@ public class PreTradeGUI extends GUI {
     }
 
     private void validateAndInitialize() {
+        if (!Bukkit.isPrimaryThread()) {
+            plugin.getServer().getScheduler().runTask(plugin, this::validateAndInitialize);
+            return;
+        }
+
         plugin.getTradeManager().isTradeValid(tradeId)
-            .thenAccept(isValid -> {
-                if (!isValid) {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        owner.sendMessage(Component.text("Este trade ya no es válido!")
-                            .color(NamedTextColor.RED));
-                        owner.closeInventory();
-                    });
-                    return;
-                }
-                plugin.getServer().getScheduler().runTask(plugin, this::setupInventoryItems);
-            })
-            .exceptionally(throwable -> {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    owner.sendMessage(Component.text("Error al verificar el trade: " + throwable.getMessage())
-                        .color(NamedTextColor.RED));
-                    owner.closeInventory();
+                .thenAccept(isValid -> {
+                    if (!isValid) {
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (!isClosed()) {
+                                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.error.invalid_trade");
+                                owner.closeInventory();
+                            }
+                        });
+                        return;
+                    }
+
+                    // Execute setup synchronously if we're already on main thread
+                    if (Bukkit.isPrimaryThread()) {
+                        setupInventoryItems();
+                    } else {
+                        Bukkit.getScheduler().runTask(plugin, this::setupInventoryItems);
+                    }
+                })
+                .exceptionally(throwable -> {
+                    if (Bukkit.isPrimaryThread()) {
+                        handleError(throwable.getMessage());
+                    } else {
+                        Bukkit.getScheduler().runTask(plugin, () -> handleError(throwable.getMessage()));
+                    }
+                    return null;
                 });
-                return null;
-            });
+    }
+
+    private void handleError(String errorMessage) {
+        if (!isClosed()) {
+            plugin.getMessageManager().sendComponentMessage(owner, "pretrade.error.verify_trade", "error",
+                    errorMessage);
+            owner.closeInventory();
+        }
     }
 
     private void setupInventoryItems() {
+        if (!Bukkit.isPrimaryThread()) {
+            plugin.getServer().getScheduler().runTask(plugin, this::setupInventoryItems);
+            return;
+        }
+
+        // Batch all inventory operations together
         setupBorders();
         updatePaginationButtons();
         setupConfirmButton();
@@ -110,127 +155,102 @@ public class PreTradeGUI extends GUI {
     }
 
     private void setupBorders() {
-        GUIItem border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-            .setName(Component.text(" ").toString());
-        
-        for (int i = 36; i < 54; i++) {
-            if (i != INFO_SLOT && i != CONFIRM_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT) {
-                inventory.setItem(i, border.getItemStack());
+        ItemStack borderItem = plugin.getItemManager().getItemStack(owner, "gui.decorative.border");
+
+        if (borderItem != null) {
+            for (int i = 36; i < 54; i++) {
+                if (i != INFO_SLOT && i != CONFIRM_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT) {
+                    inventory.setItem(i, borderItem.clone());
+                }
             }
         }
     }
 
     private void setupConfirmButton() {
-        GUIItem confirmButton = new GUIItem(Material.EMERALD)
-            .setName(isResponse ? "§aConfirmar tus items" : "§aConfirmar oferta de trade")
-            .setLore(
-                isResponse ? new String[]{
-                    "§7Click para proceder con el trade",
-                    "§7y mostrar los items a",
-                    "§f" + initiator.getName()
-                } : new String[]{
-                    "§7Click para enviar solicitud",
-                    "§7de trade a",
-                    "§f" + target.getName()
-                }
-            );
-        inventory.setItem(CONFIRM_SLOT, confirmButton.getItemStack());
+        String buttonKey = isResponse ? "gui.buttons.confirm_response" : "gui.buttons.confirm_new";
+        String targetPlayer = isResponse ? initiator.getName() : target.getName();
+
+        // Get item from ItemManager with player language support and dynamic lore
+        // replacement
+        ItemStack confirmButton = plugin.getItemManager().getItemStack(owner, buttonKey, "player", targetPlayer);
+
+        if (confirmButton != null) {
+            inventory.setItem(CONFIRM_SLOT, confirmButton);
+        } else {
+            // Fallback if item not found
+            plugin.getLogger().warning("Confirm button item not found: " + buttonKey);
+        }
     }
 
     private void setupInfoSign() {
-        GUIItem infoSign = new GUIItem(Material.OAK_SIGN)
-            .setName("§eInformación del Trade")
-            .setLore(
-                "§7" + (isResponse ? "Respondiendo a" : "Tradeando con") + ": §f" + (isResponse ? initiator.getName() : target.getName()),
-                tradeId != -1 ? "§7ID del Trade: §f" + tradeId : "§7ID del Trade: §fPendiente",
-                "§7Página: §f" + (currentPage + 1)
-            );
-        inventory.setItem(INFO_SLOT, infoSign.getItemStack());
+        String tradingWith = isResponse ? initiator.getName() : target.getName();
+        String tradeIdText = tradeId != -1 ? String.valueOf(tradeId) : "Pending...";
+
+        // Get base info item from ItemManager with player language support
+        ItemStack infoItem = plugin.getItemManager().getItemStack(owner, "gui.info.trade_info",
+                "player", tradingWith,
+                "trade_id", tradeIdText,
+                "page", String.valueOf(currentPage + 1),
+                "items", String.valueOf(itemSlots.size()));
+
+        if (infoItem != null) {
+            inventory.setItem(INFO_SLOT, infoItem);
+        } else {
+            // Fallback if item not found
+            plugin.getLogger().warning("Info sign item not found: gui.info.trade_info");
+        }
     }
 
     private void updatePaginationButtons() {
-        GUIItem prevPage = new GUIItem(Material.ARROW)
-            .setName("§ePágina Anterior")
-            .setLore("§7Click para ir a la página anterior");
-
-        GUIItem nextPage = new GUIItem(Material.ARROW)
-            .setName("§eSiguiente Página")
-            .setLore("§7Click para ir a la siguiente página");
-
+        // Previous page button with player language support
         if (currentPage > 0) {
-            inventory.setItem(PREV_PAGE_SLOT, prevPage.getItemStack());
+            ItemStack prevPageItem = plugin.getItemManager().getItemStack(owner, "gui.navigation.previous_page");
+            if (prevPageItem != null) {
+                inventory.setItem(PREV_PAGE_SLOT, prevPageItem);
+            }
         } else {
-            inventory.setItem(PREV_PAGE_SLOT, new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-                .setName(" ").getItemStack());
+            ItemStack disabledItem = plugin.getItemManager().getItemStack(owner, "gui.navigation.disabled_page");
+            if (disabledItem != null) {
+                inventory.setItem(PREV_PAGE_SLOT, disabledItem);
+            }
         }
 
-        inventory.setItem(NEXT_PAGE_SLOT, nextPage.getItemStack());
+        // Next page button with player language support
+        ItemStack nextPageItem = plugin.getItemManager().getItemStack(owner, "gui.navigation.next_page");
+        if (nextPageItem != null) {
+            inventory.setItem(NEXT_PAGE_SLOT, nextPageItem);
+        }
     }
 
     private void updatePageItems() {
-        // Limpiar slots de items
+        // Clear current page slots efficiently
         for (int slot : TRADE_SLOTS) {
             inventory.setItem(slot, null);
         }
 
-        // Mostrar items de la página actual
+        // Display items for current page
         int startIndex = currentPage * ITEMS_PER_PAGE;
-        for(int slot : itemSlots.keySet()) {
-            if (slot >= startIndex && slot < startIndex + ITEMS_PER_PAGE) {
-                ItemStack item = itemSlots.get(slot);
-                if (item != null && !item.getType().equals(Material.AIR)) {
-                    inventory.setItem(slot - startIndex, item.clone());
+        int endIndex = startIndex + ITEMS_PER_PAGE;
+
+        for (Map.Entry<Integer, ItemStack> entry : itemSlots.entrySet()) {
+            int slot = entry.getKey();
+            if (slot >= startIndex && slot < endIndex) {
+                ItemStack item = entry.getValue();
+                if (item != null && item.getType() != Material.AIR) {
+                    int displaySlot = slot - startIndex;
+                    if (displaySlot >= 0 && displaySlot < ITEMS_PER_PAGE) {
+                        inventory.setItem(TRADE_SLOTS[displaySlot], item.clone());
+                    }
                 }
             }
-        }
-    }
-
-    private void queueInventoryUpdate(int slot) {
-        pendingUpdates.add(slot);
-        long currentTime = System.currentTimeMillis();
-        
-        if (currentTime - lastUpdateTime > 200) { // 200ms throttle
-            processQueuedUpdates();
-        } else {
-            // Programar actualización diferida
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    processQueuedUpdates();
-                }
-            }.runTaskLater(plugin, 1);
-        }
-    }
-
-    private void processQueuedUpdates() {
-        if (pendingUpdates.isEmpty()) return;
-        
-        synchronized (pendingUpdates) {
-            for (int slot : pendingUpdates) {
-                updateSlot(slot);
-            }
-            pendingUpdates.clear();
-        }
-        
-        lastUpdateTime = System.currentTimeMillis();
-        setupInfoSign();
-    }
-
-    private void updateSlot(int slot) {
-        ItemStack item = itemSlots.get(slot);
-        int displaySlot = slot % ITEMS_PER_PAGE;
-        
-        if (item != null && !item.getType().equals(Material.AIR)) {
-            inventory.setItem(displaySlot, item.clone());
-        } else {
-            inventory.setItem(displaySlot, null);
         }
     }
 
     @Override
     public void handleClick(InventoryClickEvent event) {
         int clickedSlot = event.getRawSlot();
-        
+
+        // Handle confirm button
         if (clickedSlot == CONFIRM_SLOT) {
             event.setCancelled(true);
             if (event.getWhoClicked().equals(owner)) {
@@ -239,12 +259,22 @@ public class PreTradeGUI extends GUI {
             return;
         }
 
-        if (handleNavigationClick(event)) return;
+        // Handle navigation
+        if (handleNavigationClick(event)) {
+            return;
+        }
 
+        // Handle trade slots
         if (isValidTradeSlot(clickedSlot)) {
             handleTradeSlotClick(event);
+            event.setCancelled(false);
         } else {
-            event.setCancelled(true);
+            // Cancel clicks outside valid areas
+            if (clickedSlot < 54) {
+                event.setCancelled(true);
+            } else {
+                event.setCancelled(false);
+            }
         }
     }
 
@@ -257,232 +287,262 @@ public class PreTradeGUI extends GUI {
         event.setCancelled(true);
 
         if (clickedSlot == PREV_PAGE_SLOT && currentPage > 0) {
-            saveCurrentPageItems();
-            currentPage--;
-            updatePaginationButtons();
-            updatePageItems();
+            navigateToPage(currentPage - 1);
             return true;
         }
 
         if (clickedSlot == NEXT_PAGE_SLOT) {
-            saveCurrentPageItems();
-            currentPage++;
-            updatePaginationButtons();
-            updatePageItems();
+            navigateToPage(currentPage + 1);
             return true;
         }
 
         return false;
     }
 
+    private void navigateToPage(int newPage) {
+        saveCurrentPageItems();
+        currentPage = newPage;
+
+        // Batch update all page elements
+        updatePaginationButtons();
+        updatePageItems();
+        setupInfoSign();
+    }
+
     private void handleTradeSlotClick(InventoryClickEvent event) {
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            saveCurrentPageItems();
-            queueInventoryUpdate(event.getSlot());
-        });
+        // Process immediately since we're already on main thread
+        int slot = event.getSlot();
+        if (slot >= 0 && slot < ITEMS_PER_PAGE) {
+            // Mark as dirty for lazy updates
+            isDirty.set(true);
+
+            // Schedule a delayed update to batch multiple rapid clicks
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (isDirty.get()) {
+                    saveCurrentPageItems();
+                    setupInfoSign();
+                    isDirty.set(false);
+                }
+            }, 2L); // 2 ticks delay for batching
+        }
     }
 
     private void saveCurrentPageItems() {
         int startIndex = currentPage * ITEMS_PER_PAGE;
 
-
-        // Actualizar solo la lista local de items
-        for (int i = 0; i < ITEMS_PER_PAGE; i++) {
+        // Efficiently save current page items
+        for (int i = 0; i < ITEMS_PER_PAGE && i < TRADE_SLOTS.length; i++) {
             ItemStack item = inventory.getItem(TRADE_SLOTS[i]);
-    
             int realSlot = startIndex + i;
-            if (item != null && !item.getType().equals(Material.AIR)) {
+
+            if (item != null && item.getType() != Material.AIR) {
                 itemSlots.put(realSlot, item.clone());
             } else {
                 itemSlots.remove(realSlot);
             }
         }
-
     }
 
     private void handleConfirmClick() {
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            // Asegurar que guardamos todos los items de todas las páginas
+        if (isProcessing.getAndSet(true)) {
+            return; // Prevent double-processing
+        }
 
+        try {
             saveCurrentPageItems();
 
-            // Verificar si hay items seleccionados
+            // Validate items using MessageManager
             if (itemSlots.isEmpty()) {
-                owner.sendMessage(Component.text("¡Debes seleccionar al menos un item para tradear!")
-                        .color(NamedTextColor.RED));
+                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.error.no_items");
+                isProcessing.set(false);
                 return;
             }
 
-            closedByButton = true;
+            // IMMEDIATE UI RESPONSE - Close menu and send message instantly
+            closedByButton.set(true);
+            owner.closeInventory();
 
+            // Send immediate confirmation message to user using MessageManager
             if (isResponse) {
-                // Si es una respuesta, verificar que el trade siga siendo válido
-                plugin.getTradeManager().isTradeValid(tradeId)
-                        .thenAccept(isValid -> {
-                            if (!isValid) {
-                                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                    owner.sendMessage(Component.text("Este trade ya no es válido!")
-                                            .color(NamedTextColor.RED));
-                                    owner.closeInventory();
-                                });
-                                return;
-                            }
-                            handleResponseConfirmation();
-                        });
+                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.success.items_sent");
+                plugin.getMessageManager().sendComponentMessage(initiator, "pretrade.notification.items_added",
+                        "player", target.getName());
             } else {
-                // Si es un nuevo trade, crear el ID y guardar los items
-                plugin.getTradeManager().createNewTrade(owner.getUniqueId(), target.getUniqueId())
-                    .thenAccept(newTradeId -> {
-                        tradeId = newTradeId; // Guardar el nuevo ID
-                        handleInitialConfirmation()
-                            .exceptionally(throwable -> {
-                                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                    owner.sendMessage(Component.text("Error al procesar el trade: " + throwable.getMessage())
-                                        .color(NamedTextColor.RED));
-                                });
-                                return null;
+                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.success.items_sent_to", "player",
+                        target.getName());
+            }
+
+            // Process database operations asynchronously in background
+            if (isResponse) {
+                handleResponseConfirmationAsync();
+            } else {
+                handleInitialConfirmationAsync();
+            }
+
+        } catch (Exception e) {
+            isProcessing.set(false);
+            plugin.getMessageManager().sendComponentMessage(owner, "pretrade.error.verify_trade", "error",
+                    e.getMessage());
+        }
+    }
+
+    private void handleResponseConfirmationAsync() {
+        // All database operations happen asynchronously
+        CompletableFuture.runAsync(() -> {
+            plugin.getTradeManager().isTradeValid(tradeId)
+                    .thenCompose(isValid -> {
+                        if (!isValid) {
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.error.invalid_trade");
                             });
+                            return CompletableFuture.completedFuture(null);
+                        }
+
+                        return plugin.getTradeManager().updateTradeState(tradeId, TradeManager.TradeState.ACTIVE)
+                                .thenCompose(v -> plugin.getTradeManager().storeTradeItems(tradeId, owner.getUniqueId(),
+                                        getAllPagesItems()));
+                    })
+                    .thenRun(() -> {
+                        // Final trade setup - notify players when database operations complete
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            openTradeGUI();
+                        });
                     })
                     .exceptionally(throwable -> {
-                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            owner.sendMessage(Component.text("Error al crear el trade: " + throwable.getMessage())
-                                .color(NamedTextColor.RED));
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            plugin.getMessageManager().sendComponentMessage(owner, "pretrade.error.verify_trade",
+                                    "error", throwable.getMessage());
+                            plugin.getLogger()
+                                    .severe("Error in handleResponseConfirmationAsync: " + throwable.getMessage());
                         });
                         return null;
+                    })
+                    .whenComplete((result, ex) -> {
+                        isProcessing.set(false);
                     });
-            }
         });
     }
 
-    private CompletableFuture<?> handleResponseConfirmation() {
-        return plugin.getTradeManager().updateTradeState(tradeId, TradeManager.TradeState.ACTIVE)
-                .thenCompose(v -> plugin.getTradeManager().storeTradeItems(tradeId, owner.getUniqueId(), getAllPagesItems()))
-                .thenRun(() -> {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        owner.closeInventory();
-
-                        initiator.sendMessage(Component.text(target.getName())
-                                .color(NamedTextColor.WHITE)
-                                .append(Component.text(" ha agregado sus items al trade!")
-                                        .color(NamedTextColor.GREEN)));
-
-                        CompletableFuture.allOf(
-                                plugin.getTradeManager().getTradeItems(tradeId, initiator.getUniqueId()),
-                                plugin.getTradeManager().getTradeItems(tradeId, target.getUniqueId())
-                        ).thenAccept(v -> {
-                            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                openTradeGUI();
-                            });
+    private void handleInitialConfirmationAsync() {
+        // All database operations happen asynchronously
+        CompletableFuture.runAsync(() -> {
+            plugin.getTradeManager().createNewTrade(owner.getUniqueId(), target.getUniqueId())
+                    .thenCompose(newTradeId -> {
+                        tradeId = newTradeId;
+                        return plugin.getTradeManager().storeTradeItems(tradeId, owner.getUniqueId(),
+                                getAllPagesItems());
+                    })
+                    .thenRun(() -> {
+                        // Send trade request notification when database operations complete
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            sendViewTradeRequest();
                         });
+                    })
+                    .exceptionally(throwable -> {
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            plugin.getMessageManager().sendComponentMessage(owner, "pretrade.error.verify_trade",
+                                    "error", throwable.getMessage());
+                            plugin.getLogger()
+                                    .severe("Error in handleInitialConfirmationAsync: " + throwable.getMessage());
+                        });
+                        return null;
+                    })
+                    .whenComplete((result, ex) -> {
+                        isProcessing.set(false);
                     });
-                });
-    }
-
-    private CompletableFuture<?> handleInitialConfirmation() {
-        return plugin.getTradeManager().storeTradeItems(tradeId, owner.getUniqueId(), getAllPagesItems())
-                .thenRun(() -> {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        owner.closeInventory();
-                        sendViewTradeRequest();
-                    });
-                });
+        });
     }
 
     private void openTradeGUI() {
-        //enviar mensaje a initiator que target ha aceptado el trade
-        target.sendMessage(Component.text("¡" + initiator.getName() + " ha aceptado el trade!")
-                .color(NamedTextColor.GREEN));
-        //enviar un mensaje para confirmar el trade, el cual ejecuta el comando /tradeconfirm <target> <tradeId> al darle click al mensaje
-        Component confirmMessage = Component.text("[Haz click aqui para confirmar el trade]").clickEvent(ClickEvent.runCommand("/tradeconfirm " + target.getName() + " " + tradeId))
-                .color(NamedTextColor.YELLOW);
-        initiator.sendMessage(confirmMessage);
-        
-        confirmMessage = Component.text("Haz click aqui para confirmar el trade]")
-                .color(NamedTextColor.YELLOW)
+        // Send confirmation messages using MessageManager
+        plugin.getMessageManager().sendComponentMessage(target, "pretrade.notification.trade_accepted", "player",
+                initiator.getName());
+
+        // Create clickable confirmation messages
+        Component confirmMessageInitiator = plugin.getMessageManager()
+                .getComponent(initiator, "pretrade.button.confirm_trade")
+                .clickEvent(ClickEvent.runCommand("/tradeconfirm " + target.getName() + " " + tradeId));
+        initiator.sendMessage(confirmMessageInitiator);
+
+        Component confirmMessageTarget = plugin.getMessageManager()
+                .getComponent(target, "pretrade.button.confirm_trade")
                 .clickEvent(ClickEvent.runCommand("/tradeconfirm " + initiator.getName() + " " + tradeId));
-        target.sendMessage(confirmMessage);
-        
+        target.sendMessage(confirmMessageTarget);
     }
 
-
-
     private void sendViewTradeRequest() {
-        initiator.sendMessage(Component.text("Tus items han sido enviados a ")
-                .color(NamedTextColor.GREEN)
-                .append(Component.text(target.getName())
-                        .color(NamedTextColor.WHITE))
-                .append(Component.text(" (Trade ID: " + tradeId + ")")
-                        .color(NamedTextColor.GRAY)));
+        // Send notification to initiator using MessageManager
+        plugin.getMessageManager().sendComponentMessage(initiator, "pretrade.notification.trade_request.sent",
+                "player", target.getName(), "trade_id", tradeId);
 
+        // Send notification to target using MessageManager
         target.sendMessage(Component.empty());
-        target.sendMessage(Component.text("⚡ ¡Nueva solicitud de trade! ")
-                .color(NamedTextColor.YELLOW)
-                .append(Component.text("(ID: " + tradeId + ")")
-                        .color(NamedTextColor.GRAY)));
-        target.sendMessage(Component.text(initiator.getName())
-                .color(NamedTextColor.WHITE)
-                .append(Component.text(" quiere tradear contigo. Click en el botón para ver sus items.")
-                        .color(NamedTextColor.GRAY)));
+        plugin.getMessageManager().sendComponentMessage(target, "pretrade.notification.trade_request", "trade_id",
+                tradeId);
+        plugin.getMessageManager().sendComponentMessage(target, "pretrade.notification.trade_request.description",
+                "player", initiator.getName());
         target.sendMessage(Component.empty());
 
-        Component viewButton = Component.text("[Ver Items del Trade]")
-                .color(NamedTextColor.GREEN)
+        // Create clickable view button
+        Component viewButton = plugin.getMessageManager().getComponent(target, "pretrade.buttons.view_trade")
                 .clickEvent(ClickEvent.runCommand("/tradeaccept " + initiator.getName() + " " + tradeId));
-
         target.sendMessage(viewButton);
         target.sendMessage(Component.empty());
     }
 
-
-
     public List<ItemStack> getAllPagesItems() {
         saveCurrentPageItems();
+
+        // Optimized item merging with better performance
         Map<String, ItemStack> mergedItems = new HashMap<>();
-        
+
         for (ItemStack item : itemSlots.values()) {
-            if (item == null || item.getType() == Material.AIR) continue;
-            
+            if (item == null || item.getType() == Material.AIR)
+                continue;
+
             String key = getItemKey(item);
             ItemStack existing = mergedItems.get(key);
-            
+
             if (existing == null) {
                 mergedItems.put(key, item.clone());
             } else {
                 int maxStack = item.getMaxStackSize();
                 int currentAmount = existing.getAmount();
                 int addAmount = item.getAmount();
-                
-                // Si la suma excede el máximo, crear un nuevo stack
-                if (currentAmount + addAmount > maxStack) {
-                    item.setAmount(addAmount);
-                    mergedItems.put(key + "_" + mergedItems.size(), item.clone());
-                } else {
+
+                if (currentAmount + addAmount <= maxStack) {
                     existing.setAmount(currentAmount + addAmount);
+                } else {
+                    // Create new stack if exceeds max
+                    ItemStack newStack = item.clone();
+                    newStack.setAmount(addAmount);
+                    mergedItems.put(key + "_" + mergedItems.size(), newStack);
                 }
             }
         }
-        
+
         return new ArrayList<>(mergedItems.values());
     }
-    
+
     private String getItemKey(ItemStack item) {
-        if (item == null) return "null";
-        StringBuilder key = new StringBuilder();
-        key.append(item.getType().name());
-        
+        if (item == null)
+            return "null";
+
+        StringBuilder key = new StringBuilder(item.getType().name());
+
         if (item.hasItemMeta()) {
             ItemMeta meta = item.getItemMeta();
             if (meta.hasDisplayName()) {
-                key.append(meta.displayName());
+                key.append("_").append(meta.displayName().toString());
             }
             if (meta.hasLore()) {
-                key.append(meta.lore());
+                key.append("_").append(meta.lore().toString());
             }
             if (meta.hasEnchants()) {
-                key.append(meta.getEnchants());
+                key.append("_").append(meta.getEnchants().toString());
             }
         }
-        
+
         return key.toString();
     }
 
@@ -491,6 +551,14 @@ public class PreTradeGUI extends GUI {
     }
 
     public boolean wasClosedByButton() {
-        return closedByButton;
+        return closedByButton.get();
+    }
+
+    @Override
+    public void onClose(Player player) {
+        super.onClose(player);
+        // Clean up any pending operations
+        isProcessing.set(false);
+        isDirty.set(false);
     }
 }

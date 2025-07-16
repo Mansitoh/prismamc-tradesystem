@@ -8,7 +8,9 @@ import com.prismamc.trade.model.PlayerData;
 import org.bson.Document;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -33,8 +35,11 @@ public class PlayerDataManager {
                 return cache.get(uuid);
             }
 
-            // Load from database
-            Document doc = collection.find(Filters.eq("uuid", uuid.toString())).first();
+            // Load from database usando el índice uuid
+            Document hint = new Document("uuid", 1);
+            Document doc = collection.find(Filters.eq("uuid", uuid.toString()))
+                                  .hint(hint)
+                                  .first();
             
             PlayerData playerData;
             if (doc == null) {
@@ -91,5 +96,46 @@ public class PlayerDataManager {
             playerData.setLanguage(language);
             savePlayerData(playerData);
         }
+    }
+
+    /**
+     * Buscar jugadores por idioma (usando el índice compuesto)
+     */
+    public CompletableFuture<List<PlayerData>> findPlayersByLanguage(String language) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<PlayerData> players = new ArrayList<>();
+            Document hint = new Document("language", 1).append("uuid", 1);
+            
+            collection.find(Filters.eq("language", language))
+                     .hint(hint)
+                     .forEach(doc -> {
+                         PlayerData playerData = documentToPlayerData(doc);
+                         players.add(playerData);
+                         // Actualizar caché si el jugador no está en ella
+                         cache.putIfAbsent(playerData.getUuid(), playerData);
+                     });
+            
+            return players;
+        });
+    }
+
+    /**
+     * Buscar jugador por nombre (usando el índice de nombre)
+     */
+    public CompletableFuture<PlayerData> findPlayerByName(String playerName) {
+        return CompletableFuture.supplyAsync(() -> {
+            Document hint = new Document("playerName", 1);
+            Document doc = collection.find(Filters.eq("playerName", playerName))
+                                  .hint(hint)
+                                  .first();
+            
+            if (doc != null) {
+                PlayerData playerData = documentToPlayerData(doc);
+                cache.putIfAbsent(playerData.getUuid(), playerData);
+                return playerData;
+            }
+            
+            return null;
+        });
     }
 }

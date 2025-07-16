@@ -20,7 +20,6 @@ import com.mongodb.MongoException;
 import org.bukkit.scheduler.BukkitRunnable;
 import java.util.concurrent.CompletionException;
 import java.util.logging.Level;
-import java.text.MessageFormat;
 
 public class TradeManager {
     private final Plugin plugin;
@@ -554,15 +553,73 @@ public class TradeManager {
         return future;
     }
 
+    /**
+     * Get trade counts for a player (for login notifications)
+     */
+    public CompletableFuture<TradeNotificationData> getPlayerTradeNotifications(UUID playerId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                int pendingCount = 0;
+                int activeCount = 0;
+                
+                // Count pending trades (where player is the target)
+                Document pendingFilter = new Document("$and", Arrays.asList(
+                    new Document("targetPlayer", playerId.toString()),
+                    new Document("state", TradeState.PENDING.name())
+                ));
+                pendingCount = (int) mongoDBManager.getTradesCollection().countDocuments(pendingFilter);
+                
+                // Count active trades where player is involved
+                Document activeFilter = new Document("$and", Arrays.asList(
+                    new Document("$or", Arrays.asList(
+                        new Document("initiatorPlayer", playerId.toString()),
+                        new Document("targetPlayer", playerId.toString())
+                    )),
+                    new Document("$or", Arrays.asList(
+                        new Document("state", TradeState.ACTIVE.name()),
+                        new Document("$and", Arrays.asList(
+                            new Document("state", TradeState.ACCEPTED_1.name()),
+                            new Document("initiatorPlayer", playerId.toString())
+                        )),
+                        new Document("$and", Arrays.asList(
+                            new Document("state", TradeState.ACCEPTED_2.name()),
+                            new Document("targetPlayer", playerId.toString())
+                        ))
+                    ))
+                ));
+                activeCount = (int) mongoDBManager.getTradesCollection().countDocuments(activeFilter);
+                
+                return new TradeNotificationData(pendingCount, activeCount);
+                
+            } catch (Exception e) {
+                plugin.getLogger().severe("Error getting trade notifications for player " + playerId + ": " + e.getMessage());
+                return new TradeNotificationData(0, 0);
+            }
+        });
+    }
+
+    /**
+     * Data class for trade notification counts
+     */
+    public static class TradeNotificationData {
+        private final int pendingCount;
+        private final int activeCount;
+        
+        public TradeNotificationData(int pendingCount, int activeCount) {
+            this.pendingCount = pendingCount;
+            this.activeCount = activeCount;
+        }
+        
+        public int getPendingCount() { return pendingCount; }
+        public int getActiveCount() { return activeCount; }
+        public int getTotalCount() { return pendingCount + activeCount; }
+        public boolean hasAnyTrades() { return getTotalCount() > 0; }
+        public boolean hasPendingOnly() { return pendingCount > 0 && activeCount == 0; }
+        public boolean hasActiveOnly() { return activeCount > 0 && pendingCount == 0; }
+        public boolean hasMixed() { return pendingCount > 0 && activeCount > 0; }
+    }
+
     private void logError(String message, String details) {
         plugin.getLogger().log(Level.SEVERE, "{0}: {1}", new Object[]{message, details});
-    }
-
-    private void logWarning(String message, String details) {
-        plugin.getLogger().log(Level.WARNING, "{0}: {1}", new Object[]{message, details});
-    }
-
-    private void logInfo(String message, Object... params) {
-        plugin.getLogger().log(Level.INFO, message, params);
     }
 }

@@ -1,111 +1,109 @@
 package com.prismamc.trade;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Level;
-
-import org.bukkit.plugin.java.JavaPlugin;
-
-import com.prismamc.trade.commands.TradeCommand;
-import com.prismamc.trade.commands.TradeResponseCommand;
-import com.prismamc.trade.gui.lib.GUIListener;
-import com.prismamc.trade.manager.TradeManager;
-import com.prismamc.trade.manager.MongoDBManager;
-import com.prismamc.trade.manager.PlayerDataManager;
-import com.prismamc.trade.utils.FileUtil;
 
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.plugin.java.JavaPlugin;
 
+import com.prismamc.trade.commands.TradeCommand;
+import com.prismamc.trade.commands.TradeResponseCommand;
+import com.prismamc.trade.commands.MyTradesCommand;
+import com.prismamc.trade.gui.lib.GUIListener;
 import com.prismamc.trade.listeners.PlayerJoinListener;
+import com.prismamc.trade.manager.ItemManager;
+import com.prismamc.trade.manager.MessageManager;
+import com.prismamc.trade.manager.MongoDBManager;
+import com.prismamc.trade.manager.PlayerDataManager;
+import com.prismamc.trade.manager.TradeManager;
+import com.prismamc.trade.utils.FileUtil;
 
 public class Plugin extends JavaPlugin implements Listener {
-    
+
     private TradeManager tradeManager;
     private MongoDBManager mongoDBManager;
     private PlayerDataManager playerDataManager;
+    private MessageManager messageManager;
+    private ItemManager itemManager;
     private FileUtil configFile;
+    @SuppressWarnings("unused") // Used via reflection
     private final TradeCommand tradeCommand;
+    @SuppressWarnings("unused") // Used via reflection
     private final TradeResponseCommand tradeAcceptCommand;
+    @SuppressWarnings("unused") // Used via reflection
     private final TradeResponseCommand tradeDeclineCommand;
+    @SuppressWarnings("unused") // Used via reflection
+    private final MyTradesCommand myTradesCommand;
 
     public Plugin() {
         this.tradeCommand = null;
         this.tradeAcceptCommand = null;
         this.tradeDeclineCommand = null;
+        this.myTradesCommand = null;
     }
 
     @Override
     public void onEnable() {
-        // Inicializar config.yml usando FileUtil de manera asíncrona
-        CompletableFuture.runAsync(() -> {
-            try {
-                this.configFile = new FileUtil(this, "config.yml");
-                
-                // Inicializar MongoDB después de cargar la configuración
-                this.mongoDBManager = new MongoDBManager();
-                initializeMongoDB();
-                
-                // Inicializar TradeManager después de que MongoDB esté conectado
-                this.tradeManager = new TradeManager(this);
-                
-                // Inicializar PlayerDataManager
+        try {
+            this.configFile = new FileUtil(this, "config.yml");
+            initializeMongoDB();
+
+            if (mongoDBManager != null && mongoDBManager.isConnected()) {
                 this.playerDataManager = new PlayerDataManager(this);
-                
-                // Registrar listeners y comandos en el hilo principal
-                getServer().getScheduler().runTask(this, () -> {
-                    registerListeners();
-                    registerCommands();
-                });
-                
+                this.messageManager = new MessageManager(this);
+                this.itemManager = new ItemManager(this);
+                this.tradeManager = new TradeManager(this);
+
+                registerListeners();
+                registerCommands();
+
                 getLogger().info("PrismaMCTradePlugin ha sido habilitado exitosamente.");
-                getLogger().info("Versión: " + getPluginMeta().getVersion());
-            } catch (Exception e) {
-                getLogger().severe("Error durante la inicialización del plugin: " + e.getMessage());
+                getLogger().info(String.format("Version: %s", getDescription().getVersion()));
+            } else {
+                getLogger()
+                        .severe("No se pudo establecer conexión con MongoDB. El plugin no se iniciará correctamente.");
                 getServer().getPluginManager().disablePlugin(this);
             }
-        }).exceptionally(throwable -> {
-            getLogger().severe("Error crítico durante la inicialización asíncrona: " + throwable.getMessage());
-            getServer().getScheduler().runTask(this, () -> 
-                getServer().getPluginManager().disablePlugin(this));
-            return null;
-        });
+        } catch (Exception e) {
+            getLogger().severe(String.format("Error durante la inicialización del plugin: %s", e.getMessage()));
+            getServer().getPluginManager().disablePlugin(this);
+        }
     }
 
     private void initializeMongoDB() {
         try {
+            mongoDBManager = new MongoDBManager(getLogger());
             mongoDBManager.connect(configFile.getConfig());
             if (mongoDBManager.isConnected()) {
                 getLogger().info("Conexión exitosa a MongoDB!");
             } else {
                 getLogger().severe("Fallo al conectar con MongoDB!");
-                throw new RuntimeException("No se pudo establecer conexión con MongoDB");
             }
         } catch (Exception e) {
-            getLogger().severe("Error al conectar con MongoDB: " + e.getMessage());
-            throw e;
+            getLogger().severe(String.format("Error al conectar con MongoDB: %s", e.getMessage()));
+            mongoDBManager = null;
         }
     }
 
     @Override
     public void onDisable() {
-        // Limpiar recursos y cerrar conexiones
         if (tradeManager != null) {
             tradeManager.shutdown();
         }
-        
+
         if (mongoDBManager != null) {
             CompletableFuture.runAsync(() -> {
                 try {
                     mongoDBManager.disconnect();
                     getLogger().info("Desconexión exitosa de MongoDB.");
                 } catch (Exception e) {
-                    getLogger().warning("Error al desconectar de MongoDB: " + e.getMessage());
+                    getLogger().warning(String.format("Error al desconectar de MongoDB: %s", e.getMessage()));
                 }
-            }).join(); // Esperar a que se complete la desconexión
+            }).join();
         }
-        
+
         getLogger().info("PrismaMCTradePlugin ha sido deshabilitado.");
     }
 
@@ -118,7 +116,7 @@ public class Plugin extends JavaPlugin implements Listener {
     private void registerCommands() {
         try {
             java.lang.reflect.Field f;
-            
+
             f = getClass().getDeclaredField("tradeCommand");
             f.setAccessible(true);
             f.set(this, new TradeCommand(this));
@@ -131,9 +129,13 @@ public class Plugin extends JavaPlugin implements Listener {
             f.setAccessible(true);
             f.set(this, new TradeResponseCommand(this, false));
 
+            f = getClass().getDeclaredField("myTradesCommand");
+            f.setAccessible(true);
+            f.set(this, new MyTradesCommand(this));
+
             getLogger().info("Comandos de trade registrados exitosamente!");
         } catch (Exception e) {
-            getLogger().severe("Error al registrar comandos: " + e.getMessage());
+            getLogger().severe(String.format("Error al registrar comandos: %s", e.getMessage()));
             throw new RuntimeException("Fallo al registrar comandos", e);
         }
     }
@@ -163,24 +165,33 @@ public class Plugin extends JavaPlugin implements Listener {
         return playerDataManager;
     }
 
+    public MessageManager getMessageManager() {
+        return messageManager;
+    }
+
+    public ItemManager getItemManager() {
+        return itemManager;
+    }
+
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         playerDataManager.loadPlayerData(event.getPlayer())
-            .thenAccept(playerData -> {
-                getLogger().info("Loaded player data for " + event.getPlayer().getName());
-            })
-            .exceptionally(throwable -> {
-                getLogger().severe("Error loading player data for " + event.getPlayer().getName() + ": " + throwable.getMessage());
-                return null;
-            });
+                .thenAccept(playerData -> getLogger()
+                        .info(String.format("Loaded player data for %s", event.getPlayer().getName())))
+                .exceptionally(throwable -> {
+                    getLogger().severe(String.format("Error loading player data for %s: %s",
+                            event.getPlayer().getName(), throwable.getMessage()));
+                    return null;
+                });
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         playerDataManager.removeFromCache(event.getPlayer().getUniqueId())
-            .exceptionally(throwable -> {
-                getLogger().severe("Error removing player data from cache for " + event.getPlayer().getName() + ": " + throwable.getMessage());
-                return null;
-            });
+                .exceptionally(throwable -> {
+                    getLogger().severe(String.format("Error removing player data from cache for %s: %s",
+                            event.getPlayer().getName(), throwable.getMessage()));
+                    return null;
+                });
     }
 }

@@ -71,34 +71,27 @@ public class TradeDocument {
         }
 
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            boolean useCompression = false;
-            byte[] serializedData;
-
-            // Primera serialización para verificar tamaño
-            try (ByteArrayOutputStream tempStream = new ByteArrayOutputStream();
-                 ObjectOutputStream tempOutput = new ObjectOutputStream(tempStream)) {
-                
-                tempOutput.writeInt(items.size());
+            try (ObjectOutputStream dataOutput = new ObjectOutputStream(outputStream)) {
+                dataOutput.writeInt(items.size());
                 for (ItemStack item : items) {
-                    tempOutput.writeObject(item);
-                }
-                serializedData = tempStream.toByteArray();
-                useCompression = serializedData.length > COMPRESSION_THRESHOLD;
-            }
-
-            // Serialización final con o sin compresión
-            if (useCompression) {
-                try (GZIPOutputStream gzipStream = new GZIPOutputStream(outputStream);
-                     ObjectOutputStream dataOutput = new ObjectOutputStream(gzipStream)) {
-                    
-                    dataOutput.writeInt(items.size());
-                    for (ItemStack item : items) {
-                        dataOutput.writeObject(item);
+                    if (item != null) {
+                        byte[] serializedItem = item.serializeAsBytes();
+                        dataOutput.writeInt(serializedItem.length);
+                        dataOutput.write(serializedItem);
                     }
                 }
-                return "GZIP:" + Base64.getEncoder().encodeToString(outputStream.toByteArray());
+            }
+            
+            byte[] data = outputStream.toByteArray();
+            if (data.length > COMPRESSION_THRESHOLD) {
+                // Comprimir si excede el umbral
+                ByteArrayOutputStream compressedStream = new ByteArrayOutputStream();
+                try (GZIPOutputStream gzipStream = new GZIPOutputStream(compressedStream)) {
+                    gzipStream.write(data);
+                }
+                return "GZIP:" + Base64.getEncoder().encodeToString(compressedStream.toByteArray());
             } else {
-                return "RAW:" + Base64.getEncoder().encodeToString(serializedData);
+                return "RAW:" + Base64.getEncoder().encodeToString(data);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -119,16 +112,27 @@ public class TradeDocument {
             }
 
             byte[] data = Base64.getDecoder().decode(parts[1]);
-            boolean isCompressed = "GZIP".equals(parts[0]);
+            if ("GZIP".equals(parts[0])) {
+                ByteArrayOutputStream decompressedStream = new ByteArrayOutputStream();
+                try (GZIPInputStream gzipStream = new GZIPInputStream(new ByteArrayInputStream(data))) {
+                    byte[] buffer = new byte[1024];
+                    int len;
+                    while ((len = gzipStream.read(buffer)) > 0) {
+                        decompressedStream.write(buffer, 0, len);
+                    }
+                }
+                data = decompressedStream.toByteArray();
+            }
 
             try (ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
-                 ObjectInputStream dataInput = isCompressed ?
-                     new ObjectInputStream(new GZIPInputStream(inputStream)) :
-                     new ObjectInputStream(inputStream)) {
+                 ObjectInputStream dataInput = new ObjectInputStream(inputStream)) {
 
                 int size = dataInput.readInt();
                 for (int i = 0; i < size; i++) {
-                    ItemStack item = (ItemStack) dataInput.readObject();
+                    int itemLength = dataInput.readInt();
+                    byte[] itemData = new byte[itemLength];
+                    dataInput.readFully(itemData);
+                    ItemStack item = ItemStack.deserializeBytes(itemData);
                     if (item != null) {
                         items.add(item);
                     }

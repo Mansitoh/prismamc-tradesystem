@@ -35,16 +35,7 @@ public class GUIListener implements Listener {
             // Prevenir modificaciones concurrentes
             event.setCancelled(true);
             GUI gui = (GUI) holder;
-            
-            // Ejecutar el manejo del click en el próximo tick para evitar problemas de concurrencia
-            gui.getPlugin().getServer().getScheduler().runTask(gui.getPlugin(), () -> {
-                try {
-                    gui.handleClick(event);
-                } catch (Exception e) {
-                    gui.getPlugin().getLogger().severe("Error handling GUI click: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            });
+            gui.handleClick(event);
         }
     }
     
