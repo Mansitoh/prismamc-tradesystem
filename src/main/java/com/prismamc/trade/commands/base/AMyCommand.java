@@ -1,16 +1,20 @@
 package com.prismamc.trade.commands.base;
 
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.command.*;
-import org.bukkit.plugin.java.JavaPlugin;
-
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandMap;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginIdentifiableCommand;
+import org.bukkit.plugin.java.JavaPlugin;
 
 /**
  * Create a minecraft command without plugin.yml
@@ -28,7 +32,6 @@ public abstract class AMyCommand<T extends JavaPlugin> extends Command implement
             f.setAccessible(true);
             commandMap = (CommandMap) f.get(Bukkit.getServer());
         } catch (IllegalAccessException | NoSuchFieldException e) {
-            e.printStackTrace();
         }
     }
 
@@ -97,7 +100,8 @@ public abstract class AMyCommand<T extends JavaPlugin> extends Command implement
     @Override
     public boolean execute(CommandSender commandSender, String command, String[] arg) {
         if (getPermission() != null) {
-            if (!commandSender.hasPermission(getPermission())) {
+            String permission = getPermission();
+            if (permission != null && !commandSender.hasPermission(permission)) {
                 if (getPermissionMessage() == null) {
                     commandSender.sendMessage(ChatColor.RED + "No tienes permiso para usar este comando!");
                 } else {

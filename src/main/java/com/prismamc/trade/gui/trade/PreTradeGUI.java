@@ -404,14 +404,7 @@ public class PreTradeGUI extends GUI {
         
     }
 
-    private boolean isTradeSlot(int slot) {
-        for (int s : TRADE_SLOTS) {
-            if (s == slot) {
-                return true;
-            }
-        }
-        return false;
-    }
+
 
     private void sendViewTradeRequest() {
         initiator.sendMessage(Component.text("Tus items han sido enviados a ")

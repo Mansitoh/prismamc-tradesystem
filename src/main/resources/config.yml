@@ -9,3 +9,12 @@ mongodb:
   auth-database: admin
   connection-uri: "" # Optional: if provided, will override host/port settings
 
+# Command Settings
+commands:
+  trade:
+    cooldown: 5 # Cooldown in seconds between trade commands
+
+# Player Settings
+player:
+  default-language: "en" # Default language for new players
+

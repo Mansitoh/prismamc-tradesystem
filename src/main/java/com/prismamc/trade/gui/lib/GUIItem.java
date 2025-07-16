@@ -1,14 +1,15 @@
 package com.prismamc.trade.gui.lib;
 
-import org.bukkit.Material;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.event.inventory.InventoryClickEvent;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.WeakHashMap;
 import java.util.Map;
+import java.util.WeakHashMap;
+import java.util.function.Consumer;
+
+import org.bukkit.Material;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 public class GUIItem {
     private ItemStack item;

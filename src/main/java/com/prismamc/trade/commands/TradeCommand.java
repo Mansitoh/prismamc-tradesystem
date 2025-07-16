@@ -9,15 +9,21 @@ import com.prismamc.trade.Plugin;
 import com.prismamc.trade.commands.base.AMyCommand;
 import com.prismamc.trade.gui.trade.PreTradeGUI;
 import java.util.List;
+import java.util.HashMap;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class TradeCommand extends AMyCommand<Plugin> {
     
     private final Plugin plugin;
+    private final HashMap<UUID, Long> cooldowns;
+    private final int cooldownSeconds;
 
     public TradeCommand(Plugin plugin) {
         super(plugin, "trade");
         this.plugin = plugin;
+        this.cooldowns = new HashMap<>();
+        this.cooldownSeconds = plugin.getConfig().getInt("commands.trade.cooldown", 5);
         this.setDescription("Open trade selection menu with another player");
         this.setUsage("/trade <player>");
         this.setAliases("t", "tradear");
@@ -47,12 +53,24 @@ public class TradeCommand extends AMyCommand<Plugin> {
             return true;
         }
 
+        Player player = (Player) sender;
+        
+        // Check cooldown
+        long currentTime = System.currentTimeMillis();
+        if (cooldowns.containsKey(player.getUniqueId())) {
+            long timeElapsed = currentTime - cooldowns.get(player.getUniqueId());
+            if (timeElapsed < cooldownSeconds * 1000) {
+                int remainingSeconds = (int) ((cooldownSeconds * 1000 - timeElapsed) / 1000);
+                player.sendMessage(ChatColor.RED + "Please wait " + remainingSeconds + " seconds before using this command again!");
+                return true;
+            }
+        }
+
         if (args.length != 1) {
             sender.sendMessage(ChatColor.RED + "Usage: " + this.getUsage());
             return true;
         }
 
-        Player player = (Player) sender;
         Player target = Bukkit.getPlayer(args[0]);
 
         if (target == null) {
@@ -64,6 +82,9 @@ public class TradeCommand extends AMyCommand<Plugin> {
             sender.sendMessage(ChatColor.RED + "You cannot trade with yourself!");
             return true;
         }
+
+        // Update cooldown
+        cooldowns.put(player.getUniqueId(), currentTime);
 
         // Verificar si ya existe un trade entre estos jugadores
         plugin.getTradeManager().arePlayersInTrade(player.getUniqueId(), target.getUniqueId())

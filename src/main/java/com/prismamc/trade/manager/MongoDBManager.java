@@ -7,19 +7,16 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.connection.ConnectionPoolSettings;
-import lombok.Getter;
 import org.bson.Document;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.util.concurrent.TimeUnit;
 
 public class MongoDBManager {
-    @Getter
     private MongoClient mongoClient;
-    @Getter
     private MongoDatabase database;
-    @Getter
     private MongoCollection<Document> tradesCollection;
+    private MongoCollection<Document> playerDataCollection;
     
     private static final int MIN_CONNECTIONS_PER_HOST = 5;
     private static final int MAX_CONNECTIONS_PER_HOST = 20;
@@ -76,16 +73,20 @@ public class MongoDBManager {
             mongoClient = MongoClients.create(settings);
             database = mongoClient.getDatabase(config.getString("mongodb.database", "prismamc_trade"));
             
-            // Inicializar la colección de trades con índices optimizados
-            String collectionName = config.getString("mongodb.collection", "trades");
-            tradesCollection = database.getCollection(collectionName);
-            createIndexes();
+            // Initialize collections
+            String tradesCollectionName = config.getString("mongodb.collection", "trades");
+            tradesCollection = database.getCollection(tradesCollectionName);
+            playerDataCollection = database.getCollection("player_data");
+
+            // Create indexes for both collections
+            createTradeIndexes();
+            createPlayerDataIndexes();
         } catch (Exception e) {
             throw new RuntimeException("Error connecting to MongoDB", e);
         }
     }
 
-    private void createIndexes() {
+    private void createTradeIndexes() {
         // Crear índices para mejorar el rendimiento de las consultas más comunes
         tradesCollection.createIndex(new Document("tradeId", 1));
         tradesCollection.createIndex(new Document("player1", 1));
@@ -102,6 +103,12 @@ public class MongoDBManager {
             .append("player2", 1)
             .append("state", 1)
             .append("timestamp", -1));
+    }
+
+    private void createPlayerDataIndexes() {
+        // Create indexes for player_data collection
+        playerDataCollection.createIndex(new Document("uuid", 1).append("unique", true));
+        playerDataCollection.createIndex(new Document("playerName", 1));
     }
 
     public void disconnect() {
@@ -125,10 +132,22 @@ public class MongoDBManager {
         }
     }
 
+    public MongoClient getMongoClient() {
+        return mongoClient;
+    }
+
+    public MongoDatabase getDatabase() {
+        return database;
+    }
+
     public MongoCollection<Document> getTradesCollection() {
         if (tradesCollection == null) {
             throw new IllegalStateException("MongoDB connection not initialized");
         }
         return tradesCollection;
+    }
+
+    public MongoCollection<Document> getPlayerDataCollection() {
+        return playerDataCollection;
     }
 }

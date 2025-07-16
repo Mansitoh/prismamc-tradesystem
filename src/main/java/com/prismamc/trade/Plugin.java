@@ -2,6 +2,7 @@ package com.prismamc.trade;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
+
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.prismamc.trade.commands.TradeCommand;
@@ -9,12 +10,21 @@ import com.prismamc.trade.commands.TradeResponseCommand;
 import com.prismamc.trade.gui.lib.GUIListener;
 import com.prismamc.trade.manager.TradeManager;
 import com.prismamc.trade.manager.MongoDBManager;
+import com.prismamc.trade.manager.PlayerDataManager;
 import com.prismamc.trade.utils.FileUtil;
 
-public class Plugin extends JavaPlugin {
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+
+import com.prismamc.trade.listeners.PlayerJoinListener;
+
+public class Plugin extends JavaPlugin implements Listener {
     
     private TradeManager tradeManager;
     private MongoDBManager mongoDBManager;
+    private PlayerDataManager playerDataManager;
     private FileUtil configFile;
     private final TradeCommand tradeCommand;
     private final TradeResponseCommand tradeAcceptCommand;
@@ -39,6 +49,9 @@ public class Plugin extends JavaPlugin {
                 
                 // Inicializar TradeManager después de que MongoDB esté conectado
                 this.tradeManager = new TradeManager(this);
+                
+                // Inicializar PlayerDataManager
+                this.playerDataManager = new PlayerDataManager(this);
                 
                 // Registrar listeners y comandos en el hilo principal
                 getServer().getScheduler().runTask(this, () -> {
@@ -98,6 +111,8 @@ public class Plugin extends JavaPlugin {
 
     private void registerListeners() {
         getServer().getPluginManager().registerEvents(new GUIListener(), this);
+        getServer().getPluginManager().registerEvents(this, this);
+        getServer().getPluginManager().registerEvents(new PlayerJoinListener(this), this);
     }
 
     private void registerCommands() {
@@ -142,5 +157,30 @@ public class Plugin extends JavaPlugin {
             throw new IllegalStateException("ConfigFile no ha sido inicializado");
         }
         return configFile;
+    }
+
+    public PlayerDataManager getPlayerDataManager() {
+        return playerDataManager;
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        playerDataManager.loadPlayerData(event.getPlayer())
+            .thenAccept(playerData -> {
+                getLogger().info("Loaded player data for " + event.getPlayer().getName());
+            })
+            .exceptionally(throwable -> {
+                getLogger().severe("Error loading player data for " + event.getPlayer().getName() + ": " + throwable.getMessage());
+                return null;
+            });
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        playerDataManager.removeFromCache(event.getPlayer().getUniqueId())
+            .exceptionally(throwable -> {
+                getLogger().severe("Error removing player data from cache for " + event.getPlayer().getName() + ": " + throwable.getMessage());
+                return null;
+            });
     }
 }
