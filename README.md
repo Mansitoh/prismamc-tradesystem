@@ -1,7 +1,23 @@
 # Video: https://youtu.be/Lz2Fg1_H_yQ
 
-
 # Phase 2 – Trade Plugin Submission
+
+## 📖 Documentation / Documentación
+
+For detailed information about commands, usage, and technical implementation, please refer to our comprehensive documentation:
+
+Para información detallada sobre comandos, uso e implementación técnica, consulta nuestra documentación completa:
+
+📋 **[📚 DETAILED DOCUMENTATION / DOCUMENTACIÓN DETALLADA](DETAILED.md)**
+
+### Quick Links / Enlaces Rápidos:
+- 🔄 [Commands & Usage / Comandos y Uso](DETAILED.md#-available-commands--comandos-disponibles)
+- 🖱️ [Click Interaction System / Sistema de Interacción Clickeable](DETAILED.md#️-command-design-philosophy--filosofía-de-diseño-de-comandos)
+- 🌍 [Multi-Language Support / Soporte Multi-Idioma](DETAILED.md#-multi-language-support--soporte-multi-idioma)
+- 🛡️ [Admin Features / Características de Admin](DETAILED.md#️-admin-commands--comandos-de-administrador)
+- 🎮 [Workflow Examples / Ejemplos de Flujo](DETAILED.md#-usage-flow--flujo-de-uso)
+
+---
 
 ## Introduction
 

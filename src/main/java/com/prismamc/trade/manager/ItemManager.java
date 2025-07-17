@@ -590,62 +590,119 @@ public class ItemManager {
                                                                 "<gray>Ver detalles, agregar items, o recoger recompensas")),
                                 null, Arrays.asList(ItemFlag.HIDE_ATTRIBUTES), null, null, null);
 
-                // ===========================================
-                // GUI DECORATIVE - Border elements
-                // ===========================================
-
-                createMultiLanguageItem(ItemCategory.GUI_DECORATIVE, "border",
-                                Material.GRAY_STAINED_GLASS_PANE, 1,
-                                Map.of("en", "<gray> ", "es", "<gray> "),
-                                Map.of("en", new ArrayList<>(), "es", new ArrayList<>()),
-                                null, Arrays.asList(ItemFlag.HIDE_ATTRIBUTES), null, null, null);
-
-                createMultiLanguageItem(ItemCategory.GUI_DECORATIVE, "border_active",
-                                Material.LIME_STAINED_GLASS_PANE, 1,
-                                Map.of("en", "<green> ", "es", "<green> "),
-                                Map.of("en", new ArrayList<>(), "es", new ArrayList<>()),
-                                null, Arrays.asList(ItemFlag.HIDE_ATTRIBUTES), null, null, null);
-
-                createMultiLanguageItem(ItemCategory.GUI_DECORATIVE, "border_warning",
-                                Material.ORANGE_STAINED_GLASS_PANE, 1,
-                                Map.of("en", "<gold> ", "es", "<gold> "),
-                                Map.of("en", new ArrayList<>(), "es", new ArrayList<>()),
-                                null, Arrays.asList(ItemFlag.HIDE_ATTRIBUTES), null, null, null);
-
-                // ===========================================
-                // SYSTEM ITEMS - Special system items
-                // ===========================================
-
-                createMultiLanguageItem(ItemCategory.SYSTEM_ITEMS, "loading",
-                                Material.CLOCK, 1,
+                // Item específico para AdminViewTradesGUI con controles duales
+                createMultiLanguageItem(ItemCategory.GUI_BUTTONS, "admin_trade_display",
+                                Material.ENCHANTED_BOOK, 1,
                                 Map.of(
-                                                "en", "<yellow><bold>⏰ Loading...</bold></yellow>",
-                                                "es", "<yellow><bold>⏰ Cargando...</bold></yellow>"),
+                                                "en", "<gold><bold>🔍 [ADMIN] Trade #%trade_id%</bold></gold>",
+                                                "es", "<gold><bold>🔍 [ADMIN] Trade #%trade_id%</bold></gold>"),
                                 Map.of(
                                                 "en", Arrays.asList(
-                                                                "<gray>Please wait while we",
-                                                                "<gray>process your request",
-                                                                "<yellow>This may take a moment"),
+                                                                "<gray>═══════════════════════════",
+                                                                "<yellow>📊 Trade Overview:</yellow>",
+                                                                "<white>• Status: %state%",
+                                                                "<white>• Player 1: <aqua>%player1%</aqua>",
+                                                                "<white>• Player 2: <aqua>%player2%</aqua>",
+                                                                "<white>• Target: <gold>%target_player%</gold>",
+                                                                "<white>• Items received: %items_received%",
+                                                                "",
+                                                                "<red><bold>⚡ Admin Controls:</bold></red>",
+                                                                "<green>▶ Left Click:</green> <white>View %player1%'s items</white>",
+                                                                "<blue>▶ Right Click:</green> <white>View %player2%'s items</white>",
+                                                                "",
+                                                                "<gray>🛡 Admin-only trade inspection",
+                                                                "<gray>Read-only access for monitoring"),
                                                 "es", Arrays.asList(
-                                                                "<gray>Por favor espera mientras",
-                                                                "<gray>procesamos tu solicitud",
-                                                                "<yellow>Esto puede tomar un momento")),
-                                null, Arrays.asList(ItemFlag.HIDE_ATTRIBUTES), null, null, null);
+                                                                "<gray>═══════════════════════════",
+                                                                "<yellow>📊 Resumen del Trade:</yellow>",
+                                                                "<white>• Estado: %state%",
+                                                                "<white>• Jugador 1: <aqua>%player1%</aqua>",
+                                                                "<white>• Jugador 2: <aqua>%player2%</aqua>",
+                                                                "<white>• Objetivo: <gold>%target_player%</gold>",
+                                                                "<white>• Items recibidos: %items_received%",
+                                                                "",
+                                                                "<red><bold>⚡ Controles de Admin:</bold></red>",
+                                                                "<green>▶ Click Izquierdo:</green> <white>Ver items de %player1%</white>",
+                                                                "<blue>▶ Click Derecho:</green> <white>Ver items de %player2%</white>",
+                                                                "",
+                                                                "<gray>🛡 Inspección admin-only de trades",
+                                                                "<gray>Acceso de solo lectura para monitoreo")),
+                                Map.of(Enchantment.UNBREAKING, 1),
+                                Arrays.asList(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES),
+                                null, null, null);
 
-                createMultiLanguageItem(ItemCategory.SYSTEM_ITEMS, "error",
-                                Material.BARRIER, 1,
+                // Info panel específico para AdminViewTradesGUI
+                createMultiLanguageItem(ItemCategory.GUI_INFO, "admin_view_trades",
+                                Material.ENCHANTED_BOOK, 1,
                                 Map.of(
-                                                "en", "<red><bold>⚠ Error</bold></red>",
-                                                "es", "<red><bold>⚠ Error</bold></red>"),
+                                                "en", "<red><bold>🛡 Admin Trade Inspector</bold></red>",
+                                                "es", "<red><bold>🛡 Inspector de Trades Admin</bold></red>"),
                                 Map.of(
                                                 "en", Arrays.asList(
-                                                                "<gray>An error occurred",
-                                                                "<red>Please try again later",
-                                                                "<gray>Contact staff if persists"),
+                                                                "<gray>═══════════════════════════",
+                                                                "<yellow>📊 Admin Overview:</yellow>",
+                                                                "<white>• Target Player: <gold>%target_player%</gold>",
+                                                                "<white>• Admin: <red>%admin_name%</red>",
+                                                                "<white>• Total Trades: <green>%total_trades%</green>",
+                                                                "<white>• Filter: <yellow>%filter_name%</yellow> <gray>(%filtered_count%)</gray>",
+                                                                "<white>• Page: <aqua>%current_page%</aqua> of <aqua>%total_pages%</aqua>",
+                                                                "",
+                                                                "<red>🔍 Admin Controls:</red>",
+                                                                "<white>• <green>Left Click</green> any trade → View Player 1 items",
+                                                                "<white>• <blue>Right Click</blue> any trade → View Player 2 items",
+                                                                "<white>• Full read-only access to all trade data",
+                                                                "",
+                                                                "<yellow>⚠ Admin Monitoring Mode Active</yellow>",
+                                                                "<gray>All actions are logged for audit purposes"),
                                                 "es", Arrays.asList(
-                                                                "<gray>Ocurrió un error",
-                                                                "<red>Por favor intenta más tarde",
-                                                                "<gray>Contacta al staff si persiste")),
+                                                                "<gray>═══════════════════════════",
+                                                                "<yellow>📊 Resumen de Admin:</yellow>",
+                                                                "<white>• Jugador Objetivo: <gold>%target_player%</gold>",
+                                                                "<white>• Admin: <red>%admin_name%</red>",
+                                                                "<white>• Total Trades: <green>%total_trades%</green>",
+                                                                "<white>• Filtro: <yellow>%filter_name%</yellow> <gray>(%filtered_count%)</gray>",
+                                                                "<white>• Página: <aqua>%current_page%</aqua> de <aqua>%total_pages%</aqua>",
+                                                                "",
+                                                                "<red>🔍 Controles de Admin:</red>",
+                                                                "<white>• <green>Click Izquierdo</green> en trade → Ver items Jugador 1",
+                                                                "<white>• <blue>Click Derecho</blue> en trade → Ver items Jugador 2",
+                                                                "<white>• Acceso completo de solo lectura a datos de trade",
+                                                                "",
+                                                                "<yellow>⚠ Modo de Monitoreo Admin Activo</yellow>",
+                                                                "<gray>Todas las acciones se registran para auditoría")),
+                                Map.of(Enchantment.UNBREAKING, 1),
+                                Arrays.asList(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES),
+                                null, null, null);
+
+                // Selector de idioma para administradores usando cabeza de jugador
+                createMultiLanguageItem(ItemCategory.GUI_BUTTONS, "language_selector",
+                                Material.PLAYER_HEAD, 1,
+                                Map.of(
+                                                "en", "<gold><bold>🌍 Language Selector</bold></gold>",
+                                                "es", "<gold><bold>🌍 Selector de Idioma</bold></gold>"),
+                                Map.of(
+                                                "en", Arrays.asList(
+                                                                "<gray>═══════════════════════════",
+                                                                "<yellow>🗣 Current Language: <white>%current_language%</white></yellow>",
+                                                                "",
+                                                                "<green>Available Languages:</green>",
+                                                                "<white>• 🇺🇸 English (en)</white>",
+                                                                "<white>• 🇪🇸 Español (es)</white>",
+                                                                "",
+                                                                "<yellow>🖱 Click to cycle through languages!</yellow>",
+                                                                "<gray>Your preference will be saved automatically",
+                                                                "<gray>GUI will refresh with new language"),
+                                                "es", Arrays.asList(
+                                                                "<gray>═══════════════════════════",
+                                                                "<yellow>🗣 Idioma Actual: <white>%current_language%</white></yellow>",
+                                                                "",
+                                                                "<green>Idiomas Disponibles:</green>",
+                                                                "<white>• 🇺🇸 English (en)</white>",
+                                                                "<white>• 🇪🇸 Español (es)</white>",
+                                                                "",
+                                                                "<yellow>🖱 ¡Haz click para cambiar idiomas!</yellow>",
+                                                                "<gray>Tu preferencia se guardará automáticamente",
+                                                                "<gray>La GUI se actualizará con el nuevo idioma")),
                                 null, Arrays.asList(ItemFlag.HIDE_ATTRIBUTES), null, null, null);
         }
 

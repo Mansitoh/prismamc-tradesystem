@@ -39,6 +39,7 @@ public class AdminViewTradesGUI extends GUI {
     private static final int FILTER_ACTIVE_SLOT = 48;
     private static final int FILTER_COMPLETED_SLOT = 50;
     private static final int FILTER_CANCELLED_SLOT = 51;
+    private static final int LANGUAGE_SELECTOR_SLOT = 52;
 
     public enum TradeFilter {
         ALL("Todos", Material.CHEST),
@@ -80,6 +81,7 @@ public class AdminViewTradesGUI extends GUI {
                 setupBorders();
                 updatePaginationButtons();
                 setupInfoSign();
+                setupLanguageSelector();
                 displayTrades();
             });
         });
@@ -120,7 +122,7 @@ public class AdminViewTradesGUI extends GUI {
             for (int i = 45; i < 54; i++) {
                 if (i != INFO_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT &&
                         i != FILTER_ALL_SLOT && i != FILTER_PENDING_SLOT && i != FILTER_ACTIVE_SLOT &&
-                        i != FILTER_COMPLETED_SLOT && i != FILTER_CANCELLED_SLOT) {
+                        i != FILTER_COMPLETED_SLOT && i != FILTER_CANCELLED_SLOT && i != LANGUAGE_SELECTOR_SLOT) {
                     inventory.setItem(i, borderItem.clone());
                 }
             }
@@ -129,7 +131,7 @@ public class AdminViewTradesGUI extends GUI {
             for (int i = 45; i < 54; i++) {
                 if (i != INFO_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT &&
                         i != FILTER_ALL_SLOT && i != FILTER_PENDING_SLOT && i != FILTER_ACTIVE_SLOT &&
-                        i != FILTER_COMPLETED_SLOT && i != FILTER_CANCELLED_SLOT) {
+                        i != FILTER_COMPLETED_SLOT && i != FILTER_CANCELLED_SLOT && i != LANGUAGE_SELECTOR_SLOT) {
                     inventory.setItem(i, border.getItemStack());
                 }
             }
@@ -221,33 +223,43 @@ public class AdminViewTradesGUI extends GUI {
             TradeDocument trade = filteredTrades.get(i);
             int slot = i - startIndex;
 
-            // Determinar el otro jugador en el trade
+            // Determinar los jugadores en el trade
             boolean isTargetPlayer1 = trade.getPlayer1().equals(targetPlayerData.getUuid());
-            String otherPlayerUUID = isTargetPlayer1 ? trade.getPlayer2().toString() : trade.getPlayer1().toString();
-            String otherPlayerName = plugin.getServer().getOfflinePlayer(UUID.fromString(otherPlayerUUID)).getName();
+            UUID player1UUID = trade.getPlayer1();
+            UUID player2UUID = trade.getPlayer2();
+            String player1Name = plugin.getServer().getOfflinePlayer(player1UUID).getName();
+            String player2Name = plugin.getServer().getOfflinePlayer(player2UUID).getName();
+            String otherPlayerName = isTargetPlayer1 ? player2Name : player1Name;
 
             String tradeState = getTradeStateDisplayName(trade.getState());
             String itemsReceived = isTargetPlayer1 ? getItemsReceivedDisplayName(trade.areItemsSentToPlayer1())
                     : getItemsReceivedDisplayName(trade.areItemsSentToPlayer2());
 
-            // Usar ItemManager para mostrar trade con información admin
+            // Usar ItemManager para mostrar trade con información admin mejorada
             ItemStack tradeItem = plugin.getItemManager().getItemStack(owner, "gui.buttons.admin_trade_display",
                     "trade_id", String.valueOf(trade.getTradeId()),
                     "state", tradeState,
+                    "player1", player1Name,
+                    "player2", player2Name,
                     "target_player", targetPlayerData.getPlayerName(),
                     "other_player", otherPlayerName,
                     "items_received", itemsReceived);
 
             if (tradeItem == null) {
-                // Fallback con información admin
+                // Fallback con información admin mejorada
                 Material material = trade.getState() == TradeState.ACTIVE ? Material.LIME_WOOL
                         : trade.getState() == TradeState.COMPLETED ? Material.BLUE_WOOL : Material.YELLOW_WOOL;
                 GUIItem fallbackItem = new GUIItem(material)
                         .setName("§6[ADMIN] §eTrade #" + trade.getTradeId())
                         .setLore(
                                 "§7Estado: " + tradeState,
-                                "§7" + targetPlayerData.getPlayerName() + " ↔ §f" + otherPlayerName,
+                                "§7Player 1: §f" + player1Name + (isTargetPlayer1 ? " §7(Target)" : ""),
+                                "§7Player 2: §f" + player2Name + (!isTargetPlayer1 ? " §7(Target)" : ""),
                                 "§7Items recibidos: " + itemsReceived,
+                                "",
+                                "§e⚡ Admin Controls:",
+                                "§a▶ Left Click: §fVer items de " + player1Name,
+                                "§c▶ Right Click: §fVer items de " + player2Name,
                                 "",
                                 "§6[Admin View] §eClick para ver detalles");
                 tradeItem = fallbackItem.getItemStack();
@@ -404,6 +416,8 @@ public class AdminViewTradesGUI extends GUI {
         event.setCancelled(true);
 
         int clickedSlot = event.getRawSlot();
+        boolean isLeftClick = event.getClick().isLeftClick();
+        boolean isRightClick = event.getClick().isRightClick();
 
         // Navegación de páginas
         if (clickedSlot == PREV_PAGE_SLOT && currentPage > 0) {
@@ -422,12 +436,19 @@ public class AdminViewTradesGUI extends GUI {
             return;
         }
 
-        // Click en un trade - SOLO VISTA PREVIA para administradores
+        // Click en un trade - DUAL VIEW para administradores
         if (clickedSlot >= 0 && clickedSlot < 45) {
             int tradeIndex = currentPage * ITEMS_PER_PAGE + clickedSlot;
             if (tradeIndex < filteredTrades.size()) {
                 TradeDocument trade = filteredTrades.get(tradeIndex);
-                handleAdminTradeClick(trade);
+
+                if (isLeftClick) {
+                    // Left click: Ver items del Player 1
+                    handleAdminTradeClick(trade, 1);
+                } else if (isRightClick) {
+                    // Right click: Ver items del Player 2
+                    handleAdminTradeClick(trade, 2);
+                }
             }
         }
 
@@ -439,38 +460,77 @@ public class AdminViewTradesGUI extends GUI {
             displayTrades();
             return;
         }
+
+        // Selector de idioma - Slot 52
+        if (clickedSlot == LANGUAGE_SELECTOR_SLOT) {
+            handleLanguageChange();
+            return;
+        }
     }
 
     /**
-     * Manejo especial de clicks en trades para administradores
+     * Manejo especial de clicks en trades para administradores con selección de
+     * jugador
      * Solo permite vista previa, sin modificar trades
+     * 
+     * @param trade        El trade document a visualizar
+     * @param playerNumber 1 para ver items del Player 1, 2 para ver items del
+     *                     Player 2
      */
-    private void handleAdminTradeClick(TradeDocument trade) {
-        // Determinar el otro jugador
-        boolean isTargetPlayer1 = trade.getPlayer1().equals(targetPlayerData.getUuid());
-        UUID otherPlayerUUID = isTargetPlayer1 ? trade.getPlayer2() : trade.getPlayer1();
-        String otherPlayerName = plugin.getServer().getOfflinePlayer(otherPlayerUUID).getName();
+    private void handleAdminTradeClick(TradeDocument trade, int playerNumber) {
+        // Determinar qué jugador se va a mostrar
+        UUID selectedPlayerUUID;
+        String selectedPlayerName;
+        UUID otherPlayerUUID;
+        String otherPlayerName;
+        String viewingContext;
 
-        // Notificar al admin sobre la acción
+        if (playerNumber == 1) {
+            selectedPlayerUUID = trade.getPlayer1();
+            selectedPlayerName = plugin.getServer().getOfflinePlayer(selectedPlayerUUID).getName();
+            otherPlayerUUID = trade.getPlayer2();
+            otherPlayerName = plugin.getServer().getOfflinePlayer(otherPlayerUUID).getName();
+            viewingContext = "Player 1 (" + selectedPlayerName + ")";
+        } else {
+            selectedPlayerUUID = trade.getPlayer2();
+            selectedPlayerName = plugin.getServer().getOfflinePlayer(selectedPlayerUUID).getName();
+            otherPlayerUUID = trade.getPlayer1();
+            otherPlayerName = plugin.getServer().getOfflinePlayer(otherPlayerUUID).getName();
+            viewingContext = "Player 2 (" + selectedPlayerName + ")";
+        }
+
+        // Notificar al admin sobre la acción específica
         plugin.getMessageManager().sendComponentMessage(owner, "admin.viewtrades.viewing_trade",
                 "trade_id", String.valueOf(trade.getTradeId()),
-                "target_player", targetPlayerData.getPlayerName(),
+                "target_player", viewingContext,
                 "other_player", otherPlayerName,
                 "state", trade.getState().name());
 
-        // Obtener los items del jugador objetivo para mostrar
-        plugin.getTradeManager().getTradeItems(trade.getTradeId(), targetPlayerData.getUuid())
-                .thenAccept(targetPlayerItems -> {
+        // Obtener los items del jugador seleccionado para mostrar
+        plugin.getTradeManager().getTradeItems(trade.getTradeId(), selectedPlayerUUID)
+                .thenAccept(selectedPlayerItems -> {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        // Crear ViewTradeGUI en modo admin (solo lectura)
-                        ViewTradeGUI adminViewTradeGUI = new ViewTradeGUI(
-                                owner, otherPlayerName, otherPlayerUUID, plugin,
-                                targetPlayerItems, trade.getTradeId());
+                        // Crear ViewTradeGUI en modo admin (solo lectura) con título descriptivo
+                        String adminTitle = "Admin View: " + viewingContext + " - Trade #" + trade.getTradeId();
 
-                        // Configurar como vista de solo lectura
-                        adminViewTradeGUI.setOnlyPreview(true);
-                        adminViewTradeGUI.setAdminView(true); // Nuevo flag para vista admin
-                        adminViewTradeGUI.setOnlyPreview(true);
+                        // Usar el constructor estándar de ViewTradeGUI
+                        ViewTradeGUI adminViewTradeGUI = new ViewTradeGUI(
+                                owner, selectedPlayerName, selectedPlayerUUID, plugin,
+                                selectedPlayerItems, trade.getTradeId()) {
+
+                            @Override
+                            public String getTitle() {
+                                return adminTitle;
+                            }
+
+                            @Override
+                            protected void initializeItems() {
+                                // Configurar como vista de solo lectura admin antes de inicializar
+                                setOnlyPreview(true);
+                                setAdminView(true);
+                                super.initializeItems();
+                            }
+                        };
 
                         adminViewTradeGUI.openInventory();
                     });
@@ -478,12 +538,137 @@ public class AdminViewTradesGUI extends GUI {
                 .exceptionally(throwable -> {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         plugin.getLogger().severe(String.format(
-                                "Error loading trade items for admin view: %s", throwable.getMessage()));
+                                "Error loading trade items for admin view (Player %d): %s",
+                                playerNumber, throwable.getMessage()));
                         plugin.getMessageManager().sendComponentMessage(owner,
                                 "admin.viewtrades.error_viewing_trade",
                                 "error", throwable.getMessage());
                     });
                     return null;
                 });
+    }
+
+    /**
+     * Configura el selector de idioma en el slot 52
+     * Muestra el idioma actual del administrador y permite cambiarlo
+     */
+    private void setupLanguageSelector() {
+        // Obtener el idioma actual del administrador
+        PlayerData adminData = plugin.getPlayerDataManager().getCachedPlayerData(owner.getUniqueId());
+        String currentLanguage = adminData != null ? adminData.getLanguage() : "en";
+
+        // Mapeo de códigos de idioma a nombres legibles
+        String languageDisplayName = getLanguageDisplayName(currentLanguage);
+
+        // Obtener el item del selector de idioma del ItemManager
+        ItemStack languageSelector = plugin.getItemManager().getItemStack(owner, "gui.buttons.language_selector",
+                "current_language", languageDisplayName);
+
+        if (languageSelector != null) {
+            // Configurar la textura de la cabeza según el idioma
+            languageSelector = setPlayerHeadTexture(languageSelector, currentLanguage);
+            inventory.setItem(LANGUAGE_SELECTOR_SLOT, languageSelector);
+        } else {
+            // Fallback si no existe el item en ItemManager
+            Material headMaterial = Material.PLAYER_HEAD;
+            GUIItem fallbackSelector = new GUIItem(headMaterial)
+                    .setName("§6🌍 Selector de Idioma")
+                    .setLore(
+                            "§7Idioma actual: §f" + languageDisplayName,
+                            "",
+                            "§7Idiomas disponibles:",
+                            "§f• 🇺🇸 English (en)",
+                            "§f• 🇪🇸 Español (es)",
+                            "",
+                            "§e🖱 ¡Haz click para cambiar!");
+
+            ItemStack fallbackItem = fallbackSelector.getItemStack();
+            fallbackItem = setPlayerHeadTexture(fallbackItem, currentLanguage);
+            inventory.setItem(LANGUAGE_SELECTOR_SLOT, fallbackItem);
+        }
+    }
+
+    /**
+     * Maneja el cambio de idioma cuando se hace click en el selector
+     */
+    private void handleLanguageChange() {
+        // Obtener el idioma actual del administrador
+        PlayerData adminData = plugin.getPlayerDataManager().getCachedPlayerData(owner.getUniqueId());
+        String currentLanguage = adminData != null ? adminData.getLanguage() : "en";
+
+        // Obtener lista de idiomas disponibles del MessageManager
+        String[] availableLanguages = { "en", "es" }; // Basado en los idiomas encontrados en MessageManager
+
+        // Encontrar el siguiente idioma en la lista
+        String newLanguage = getNextLanguage(currentLanguage, availableLanguages);
+
+        // Actualizar el idioma del administrador
+        plugin.getPlayerDataManager().updateLanguage(owner.getUniqueId(), newLanguage);
+
+        // Enviar mensaje de confirmación
+        String newLanguageDisplayName = getLanguageDisplayName(newLanguage);
+        plugin.getMessageManager().sendComponentMessage(owner, "general.language_changed",
+                "new_language", newLanguageDisplayName);
+
+        // Actualizar toda la GUI con el nuevo idioma
+        refreshGUIWithNewLanguage();
+    }
+
+    /**
+     * Obtiene el siguiente idioma en la lista de idiomas disponibles
+     */
+    private String getNextLanguage(String currentLanguage, String[] availableLanguages) {
+        for (int i = 0; i < availableLanguages.length; i++) {
+            if (availableLanguages[i].equals(currentLanguage)) {
+                // Retornar el siguiente idioma, o el primero si estamos en el último
+                return availableLanguages[(i + 1) % availableLanguages.length];
+            }
+        }
+        // Si no se encuentra el idioma actual, retornar el primero
+        return availableLanguages[0];
+    }
+
+    /**
+     * Obtiene el nombre legible del idioma
+     */
+    private String getLanguageDisplayName(String languageCode) {
+        switch (languageCode) {
+            case "en":
+                return "English";
+            case "es":
+                return "Español";
+            default:
+                return "Unknown";
+        }
+    }
+
+    /**
+     * Configura la textura de la cabeza de jugador según el idioma
+     */
+    private ItemStack setPlayerHeadTexture(ItemStack item, String languageCode) {
+        // Para esta implementación, usaremos diferentes cabezas según el idioma
+        // En una implementación completa, podrías usar texturas específicas de banderas
+
+        if (item.getType() == Material.PLAYER_HEAD) {
+            // Por ahora, mantenemos la cabeza básica
+            // En el futuro se pueden agregar texturas específicas usando SkullMeta
+            return item;
+        }
+        return item;
+    }
+
+    /**
+     * Refresca toda la GUI con el nuevo idioma
+     */
+    private void refreshGUIWithNewLanguage() {
+        // Actualizar todos los elementos de la GUI con el nuevo idioma
+        setupFilterButtons();
+        setupInfoSign();
+        setupLanguageSelector();
+        updatePaginationButtons();
+        displayTrades();
+
+        // Mensaje de éxito
+        owner.sendMessage("§a✓ Idioma actualizado. La GUI se ha refrescado.");
     }
 }

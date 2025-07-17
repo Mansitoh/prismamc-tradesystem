@@ -992,7 +992,7 @@ public class TradeManager {
                         // Send success notification
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             plugin.getMessageManager().sendComponentMessage(player1Online,
-                                    "trade.completion.items_received",
+                                    "trade.success.completion.items_received",
                                     "trade_id", String.valueOf(tradeId));
                         });
                     }
@@ -1006,7 +1006,7 @@ public class TradeManager {
                         // Send success notification
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             plugin.getMessageManager().sendComponentMessage(player2Online,
-                                    "trade.completion.items_received",
+                                    "trade.success.completion.items_received",
                                     "trade_id", String.valueOf(tradeId));
                         });
                     }
@@ -1084,7 +1084,8 @@ public class TradeManager {
                         player.getWorld().dropItemNaturally(player.getLocation(), item.clone());
                         // Notify player about inventory being full
                         Bukkit.getScheduler().runTask(plugin, () -> {
-                            plugin.getMessageManager().sendComponentMessage(player, "trade.completion.inventory_full");
+                            plugin.getMessageManager().sendComponentMessage(player,
+                                    "mytrades.completed.inventory_full");
                         });
                     }
                 }
