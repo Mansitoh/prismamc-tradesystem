@@ -682,9 +682,9 @@ public class ViewTradeGUI extends GUI {
      * This method handles the final trade execution including:
      * 
      * 1. Marking the trade as completed in the database
-     * 2. Distributing items to the confirming player immediately
-     * 3. Notifying the other player about trade completion
-     * 4. Providing success feedback and closing the GUI
+     * 2. Notifying both players about trade completion
+     * 3. Directing both players to use /mytrades to collect items
+     * 4. Closing the GUI for the confirming player
      * 
      * @param player The player who triggered the trade completion
      */
@@ -693,23 +693,12 @@ public class ViewTradeGUI extends GUI {
                 .thenAccept(success -> {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (success) {
-                            // Give items to the current player immediately
-                            plugin.getTradeManager().getTradeItemsForPlayer(tradeId, player.getUniqueId())
-                                    .thenAccept(items -> {
-                                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                            if (items != null && !items.isEmpty()) {
-                                                // Give items to current player
-                                                giveItemsToPlayer(player, items);
-
-                                                // Success message for current player
-                                                String otherPlayerName = getOtherPlayerName(player.getUniqueId());
-                                                plugin.getMessageManager().sendComponentMessage(player,
-                                                        "trade.success.completion.items_received",
-                                                        "player", otherPlayerName,
-                                                        "trade_id", String.valueOf(tradeId));
-                                            }
-                                        });
-                                    });
+                            // Success message for current player - direct them to /mytrades
+                            String otherPlayerName = getOtherPlayerName(player.getUniqueId());
+                            plugin.getMessageManager().sendComponentMessage(player,
+                                    "trade.success.completion.use_mytrades",
+                                    "player", otherPlayerName,
+                                    "trade_id", String.valueOf(tradeId));
 
                             // Notify the other player about trade completion
                             notifyOtherPlayerTradeCompleted(player);
