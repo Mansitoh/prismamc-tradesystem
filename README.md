@@ -5,7 +5,7 @@
 
 ## Introduction
 
-First of all, thank you very much for accepting me into **Phase 1** of the selection process. I truly appreciate the opportunity to be considered as a part of the **PrismMC** team.
+First of all, thank you very much for accepting me into **Phase 1** of the selection process. I truly appreciate the opportunity to be considered as a part of the **PrismaMC** team.
 
 ## About the Plugin
 
@@ -91,7 +91,7 @@ Due to the short timeframe, I didn’t have the chance to perform extensive test
 ## Final Notes
 While this submission might not be 100% polished, I aimed to prioritize clean code, maintainability, and correct architectural decisions. I believe this reflects my potential as a developer.
 
-Although GUI creation is not my strongest suit, I truly enjoy working at the packet level. I'm always open to learning new things, and if you give me the opportunity to be part of PrismMC, I promise I will never let you down — whether for this or any future plugin you may need.
+Although GUI creation is not my strongest suit, I truly enjoy working at the packet level. I'm always open to learning new things, and if you give me the opportunity to be part of PrismaMC, I promise I will never let you down — whether for this or any future plugin you may need.
 
 Thank you very much for reading.
 Sincerely,
@@ -105,7 +105,7 @@ Mansitoh
 
 ## Introducción
 
-Antes que nada, muchas gracias por haberme aceptado en la **Fase 1** del proceso de selección. Aprecio sinceramente la oportunidad de ser considerado para formar parte del equipo de **PrismMC**.
+Antes que nada, muchas gracias por haberme aceptado en la **Fase 1** del proceso de selección. Aprecio sinceramente la oportunidad de ser considerado para formar parte del equipo de **PrismaMC**.
 
 ## Sobre el Plugin
 
@@ -191,7 +191,7 @@ Por cuestiones de tiempo, no tuve la posibilidad de realizar pruebas exhaustivas
 ## Notas Finales
 Aunque esta entrega no está completamente pulida, prioricé la calidad del código, su mantenibilidad y una arquitectura adecuada. Considero que esto representa fielmente mi perfil como desarrollador.
 
-Si bien mi fortaleza no está en el desarrollo de interfaces gráficas (GUI), realmente disfruto trabajar a nivel de paquetes. Siempre estoy abierto a seguir aprendiendo, y si se me brinda la oportunidad de formar parte de PrismMC, les aseguro que no los defraudaré, ya sea para este plugin o para cualquier otro proyecto futuro.
+Si bien mi fortaleza no está en el desarrollo de interfaces gráficas (GUI), realmente disfruto trabajar a nivel de paquetes. Siempre estoy abierto a seguir aprendiendo, y si se me brinda la oportunidad de formar parte de PrismaMC, les aseguro que no los defraudaré, ya sea para este plugin o para cualquier otro proyecto futuro.
 
 Muchas gracias por su tiempo y lectura.
 Atentamente,
