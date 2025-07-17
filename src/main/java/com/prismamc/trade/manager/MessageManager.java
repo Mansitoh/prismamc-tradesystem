@@ -18,52 +18,136 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Advanced Message Manager with Component support and easy in-game editing
- * Supports MiniMessage formatting and multi-language messages
+ * MessageManager - Advanced Internationalization and Message Management System
+ * 
+ * This class provides comprehensive multilingual message management for the
+ * PrismaMC Trade System. It features modern Adventure Component support,
+ * MiniMessage formatting, database-backed message storage, and real-time
+ * message editing capabilities.
+ * 
+ * Key Features:
+ * - Multi-language support with player-specific language preferences
+ * - Modern Adventure Components with MiniMessage formatting support
+ * - Legacy ChatColor compatibility for older systems
+ * - Database-backed message persistence with MongoDB integration
+ * - Organized message categorization for easy management
+ * - Real-time message editing and updates
+ * - Intelligent caching for optimal performance
+ * - Placeholder replacement system for dynamic content
+ * - Fallback mechanisms for missing translations
+ * 
+ * Supported Formats:
+ * - MiniMessage (modern): <green><bold>Text</bold></green>
+ * - Legacy color codes: &a&lText&r
+ * - Plain text with automatic formatting detection
+ * 
+ * Message Organization:
+ * - Hierarchical categorization system
+ * - Prefix-based key organization
+ * - Easy bulk operations by category
+ * - Administrative tools integration
+ * 
+ * @author Mansitoh
+ * @version 1.0.0
+ * @since 1.0.0
  */
 public class MessageManager {
+
+        // Core dependencies and storage
         private final Plugin plugin;
         private final MongoCollection<Document> messagesCollection;
         private final Map<String, Message> messageCache;
         private final Map<String, MessageCategory> messageCategories;
 
-        // Modern formatters
+        // Modern formatting engines
         private final MiniMessage miniMessage;
         private final LegacyComponentSerializer legacySerializer;
 
-        // Message Categories for organized management
+        /**
+         * MessageCategory - Organized categorization system for message management
+         * 
+         * This enumeration provides a structured approach to organizing messages
+         * by functionality and context. Each category has a unique prefix for
+         * key organization and a display name for administrative interfaces.
+         * 
+         * Categories are designed to group related messages together for:
+         * - Easier message management and editing
+         * - Bulk operations on related messages
+         * - Clear organization in administrative tools
+         * - Logical separation of concerns
+         */
         public enum MessageCategory {
+                /** Core trade functionality messages */
                 TRADE_ACTIONS("trade.actions", "Trade Actions"),
+
+                /** Error messages related to trade operations */
                 TRADE_ERRORS("trade.errors", "Trade Errors"),
+
+                /** Success confirmation messages for completed operations */
                 TRADE_SUCCESS("trade.success", "Trade Success Messages"),
+
+                /** GUI elements and interface text for PreTrade screens */
                 PRETRADE_GUI("pretrade.gui", "PreTrade GUI Elements"),
+
+                /** Interactive button text and tooltips for PreTrade */
                 PRETRADE_BUTTONS("pretrade.buttons", "PreTrade Buttons"),
+
+                /** Informational messages and help text for PreTrade */
                 PRETRADE_INFO("pretrade.info", "PreTrade Information"),
+
+                /** System notifications and alerts for PreTrade */
                 PRETRADE_NOTIFICATIONS("pretrade.notifications", "PreTrade Notifications"),
+
+                /** Error handling messages specific to PreTrade operations */
                 PRETRADE_ERRORS("pretrade.errors", "PreTrade Errors"),
+
+                /** GUI components and text for trade viewing interfaces */
                 VIEW_TRADE_GUI("viewtrade.gui", "View Trade GUI"),
+
+                /** Messages for the MyTrades personal trade management interface */
                 MYTRADES_GUI("mytrades", "MyTrades GUI Messages"),
+
+                /** Navigation and pagination control messages */
                 PAGINATION("pagination", "Pagination Controls"),
+
+                /** System-wide general purpose messages */
                 GENERAL("general", "General Messages"),
+
+                /** Login alerts and connection-based trade notifications */
                 TRADE_NOTIFICATIONS("trade.notifications", "Trade Notifications");
 
                 private final String prefix;
                 private final String displayName;
 
+                /**
+                 * Creates a new message category with the specified prefix and display name.
+                 * 
+                 * @param prefix      Unique prefix for message keys in this category
+                 * @param displayName Human-readable name for administrative interfaces
+                 */
                 MessageCategory(String prefix, String displayName) {
                         this.prefix = prefix;
                         this.displayName = displayName;
                 }
 
+                /** @return The prefix used for message keys in this category */
                 public String getPrefix() {
                         return prefix;
                 }
 
+                /** @return The human-readable display name for this category */
                 public String getDisplayName() {
                         return displayName;
                 }
         }
 
+        /**
+         * Constructs a new MessageManager instance.
+         * Initializes the message system including database connections,
+         * formatting engines, and default message templates.
+         * 
+         * @param plugin The main plugin instance providing database access
+         */
         public MessageManager(Plugin plugin) {
                 this.plugin = plugin;
                 this.messagesCollection = plugin.getMongoDBManager().getDatabase().getCollection("messages");
@@ -72,18 +156,38 @@ public class MessageManager {
                 this.miniMessage = MiniMessage.miniMessage();
                 this.legacySerializer = LegacyComponentSerializer.legacyAmpersand();
 
-                // Initialize message structure
+                // Initialize message system components
                 initializeMessageCategories();
                 initializeDefaultMessages();
                 loadMessages();
         }
 
+        /**
+         * Initializes the message category mapping for quick category lookups.
+         * This method populates the internal category map used for message
+         * organization and administrative operations.
+         */
         private void initializeMessageCategories() {
                 for (MessageCategory category : MessageCategory.values()) {
                         messageCategories.put(category.getPrefix(), category);
                 }
         }
 
+        /**
+         * Initializes the comprehensive default message set for the trade system.
+         * This method creates all default messages with multi-language support
+         * covering every aspect of the trading system including:
+         * 
+         * - Trade actions and operations
+         * - Error handling and validation
+         * - Success confirmations
+         * - GUI elements and interface text
+         * - Notifications and alerts
+         * - Administrative messages
+         * 
+         * Messages support both English and Spanish by default, with easy
+         * extensibility for additional languages.
+         */
         private void initializeDefaultMessages() {
                 // ===========================================
                 // TRADE ACTIONS - Core trade functionality
@@ -737,32 +841,53 @@ public class MessageManager {
         }
 
         /**
-         * Helper method to add messages with category organization
+         * Helper method to add messages with proper category organization.
+         * This method creates properly formatted message keys and stores
+         * messages in the initialization cache for later database insertion.
+         * 
+         * @param category     The message category for organization
+         * @param key          The specific message key within the category
+         * @param translations Map of language codes to translated text
          */
         private void addMessage(MessageCategory category, String key, Map<String, String> translations) {
                 String fullKey = category.getPrefix() + "." + key;
                 Message message = new Message(fullKey, translations);
-                // We'll store this in our initialization map for later database insertion
+                // Store in initialization cache for later database processing
                 messageCache.put(fullKey, message);
         }
 
+        /**
+         * Loads messages from the database and synchronizes with default messages.
+         * This method performs the following operations:
+         * 
+         * 1. Processes each default message in the cache
+         * 2. Checks if the message exists in the database
+         * 3. Inserts new default messages if they don't exist
+         * 4. Loads existing messages from database to cache
+         * 5. Handles errors gracefully for individual messages
+         * 
+         * This process ensures that all default messages are available while
+         * preserving any custom modifications made through administrative tools.
+         */
         private void loadMessages() {
                 CompletableFuture.runAsync(() -> {
                         try {
-                                // Procesar cada mensaje por defecto
+                                // Process each default message for database synchronization
                                 for (Map.Entry<String, Message> entry : messageCache.entrySet()) {
                                         String key = entry.getKey();
                                         try {
-                                                // Verificar si el mensaje ya existe
+                                                // Check if message already exists in database
                                                 Document existingMessage = messagesCollection
                                                                 .find(Filters.eq("key", key)).first();
 
                                                 if (existingMessage == null) {
+                                                        // Insert new default message
                                                         Document doc = Document
                                                                         .parse(entry.getValue().toDocument().toJson());
                                                         messagesCollection.insertOne(doc);
                                                         plugin.getLogger().info("Added default message: " + key);
                                                 } else {
+                                                        // Load existing message from database
                                                         messageCache.put(key, new Message(existingMessage));
                                                 }
                                         } catch (Exception e) {
@@ -779,6 +904,15 @@ public class MessageManager {
                 });
         }
 
+        /**
+         * Sends a message to a player using legacy ChatColor formatting.
+         * This method provides backward compatibility with older formatting systems.
+         * 
+         * @param player       The player to send the message to
+         * @param key          The message key to retrieve
+         * @param replacements Variable arguments for placeholder replacement (key,
+         *                     value pairs)
+         */
         public void sendMessage(Player player, String key, Object... replacements) {
                 PlayerData playerData = plugin.getPlayerDataManager().getCachedPlayerData(player.getUniqueId());
                 if (playerData == null) {
@@ -807,7 +941,22 @@ public class MessageManager {
         }
 
         /**
-         * Send a message using Adventure Components with MiniMessage support
+         * Sends a message to a player using modern Adventure Components with
+         * MiniMessage support.
+         * This is the preferred method for sending formatted messages as it supports
+         * the full range of modern Minecraft text formatting features.
+         * 
+         * Features supported:
+         * - Rich text formatting (bold, italic, underline, strikethrough)
+         * - RGB color support
+         * - Hover events and click actions
+         * - Gradients and animations
+         * - Legacy color code fallback
+         * 
+         * @param player       The player to send the message to
+         * @param key          The message key to retrieve
+         * @param replacements Variable arguments for placeholder replacement (key,
+         *                     value pairs)
          */
         public void sendComponentMessage(Player player, String key, Object... replacements) {
                 PlayerData playerData = plugin.getPlayerDataManager().getCachedPlayerData(player.getUniqueId());
@@ -820,8 +969,20 @@ public class MessageManager {
         }
 
         /**
-         * Get a Component with full formatting support
-         * This is the main method for retrieving formatted messages
+         * Retrieves a formatted Component with full formatting support.
+         * This is the core method for message retrieval and formatting that:
+         * 
+         * 1. Looks up the message by key
+         * 2. Gets the appropriate translation for the language
+         * 3. Applies placeholder replacements
+         * 4. Parses with MiniMessage for modern formatting
+         * 5. Falls back to legacy formatting if needed
+         * 6. Provides plain text as ultimate fallback
+         * 
+         * @param key          The message key to retrieve
+         * @param language     The language code for the translation
+         * @param replacements Variable arguments for placeholder replacement
+         * @return Formatted Component ready for display
          */
         public Component getComponent(String key, String language, Object... replacements) {
                 Message message = messageCache.get(key);
@@ -835,21 +996,28 @@ public class MessageManager {
                 text = applyReplacements(text, replacements);
 
                 try {
-                        // Parse with MiniMessage for modern formatting
+                        // Parse with MiniMessage for modern formatting support
                         return miniMessage.deserialize(text);
                 } catch (Exception e) {
-                        // Fallback to legacy format
+                        // Fallback to legacy format for compatibility
                         try {
                                 return legacySerializer.deserialize(text);
                         } catch (Exception e2) {
-                                // Ultimate fallback
+                                // Ultimate fallback to plain text
                                 return Component.text(text);
                         }
                 }
         }
 
         /**
-         * Get Component for a player using their language preference
+         * Retrieves a Component for a player using their language preference.
+         * This convenience method automatically determines the player's language
+         * and retrieves the appropriate translation.
+         * 
+         * @param player       The player whose language preference to use
+         * @param key          The message key to retrieve
+         * @param replacements Variable arguments for placeholder replacement
+         * @return Formatted Component in the player's preferred language
          */
         public Component getComponent(Player player, String key, Object... replacements) {
                 PlayerData playerData = plugin.getPlayerDataManager().getCachedPlayerData(player.getUniqueId());
@@ -858,7 +1026,13 @@ public class MessageManager {
         }
 
         /**
-         * Apply replacements to message text
+         * Applies placeholder replacements to message text.
+         * This method processes variable argument pairs as key-value replacements,
+         * replacing %key% patterns in the text with their corresponding values.
+         * 
+         * @param text         The text to process
+         * @param replacements Variable arguments in key, value pairs
+         * @return Text with all placeholders replaced
          */
         private String applyReplacements(String text, Object... replacements) {
                 if (replacements != null && replacements.length > 0) {
@@ -874,7 +1048,14 @@ public class MessageManager {
         }
 
         /**
-         * Get raw message text (for compatibility)
+         * Retrieves raw message text for compatibility with legacy systems.
+         * This method returns unformatted text strings, useful for contexts
+         * where Components are not supported.
+         * 
+         * @param player       The player whose language preference to use
+         * @param key          The message key to retrieve
+         * @param replacements Variable arguments for placeholder replacement
+         * @return Raw text string with placeholders replaced
          */
         public String getRawMessage(Player player, String key, Object... replacements) {
                 PlayerData playerData = plugin.getPlayerDataManager().getCachedPlayerData(player.getUniqueId());
@@ -883,7 +1064,14 @@ public class MessageManager {
         }
 
         /**
-         * Get raw message text by language
+         * Retrieves raw message text by language code.
+         * This method provides direct access to message text without formatting,
+         * useful for logging, debugging, or integration with external systems.
+         * 
+         * @param key          The message key to retrieve
+         * @param language     The language code for the translation
+         * @param replacements Variable arguments for placeholder replacement
+         * @return Raw text string with placeholders replaced
          */
         public String getRawMessage(String key, String language, Object... replacements) {
                 Message message = messageCache.get(key);
@@ -898,14 +1086,24 @@ public class MessageManager {
         }
 
         /**
-         * Get all message categories for in-game editing
+         * Retrieves all message categories for administrative interfaces.
+         * This method provides access to the complete category structure,
+         * useful for building administrative tools and message editors.
+         * 
+         * @return Map of category prefixes to MessageCategory objects
          */
         public Map<String, MessageCategory> getMessageCategories() {
                 return new HashMap<>(messageCategories);
         }
 
         /**
-         * Get messages by category for in-game editing
+         * Retrieves messages by category for administrative operations.
+         * This method filters the message cache to return only messages
+         * belonging to the specified category, useful for bulk operations
+         * and category-specific editing interfaces.
+         * 
+         * @param category The category to filter by
+         * @return Map of message keys to Message objects in the category
          */
         public Map<String, Message> getMessagesByCategory(MessageCategory category) {
                 Map<String, Message> categoryMessages = new HashMap<>();
@@ -921,7 +1119,20 @@ public class MessageManager {
         }
 
         /**
-         * Update a message (for in-game editing)
+         * Updates a message translation for a specific language.
+         * This method provides real-time message editing capabilities:
+         * 
+         * 1. Updates the message in the local cache
+         * 2. Persists the change to the database
+         * 3. Makes the change immediately available
+         * 
+         * This is useful for administrative tools that allow in-game
+         * message editing and customization.
+         * 
+         * @param key      The message key to update
+         * @param language The language code to update
+         * @param newText  The new translation text
+         * @return CompletableFuture containing true if successful, false otherwise
          */
         public CompletableFuture<Boolean> updateMessage(String key, String language, String newText) {
                 return CompletableFuture.supplyAsync(() -> {
@@ -931,13 +1142,13 @@ public class MessageManager {
                                         return false;
                                 }
 
-                                // Update in cache
+                                // Update in cache for immediate availability
                                 Map<String, String> translations = message.getTranslations();
                                 translations.put(language, newText);
                                 Message updatedMessage = new Message(key, translations);
                                 messageCache.put(key, updatedMessage);
 
-                                // Update in database
+                                // Persist to database for permanent storage
                                 Document filter = new Document("key", key);
                                 Document update = new Document("$set",
                                                 new Document("translations." + language, newText));
@@ -951,6 +1162,12 @@ public class MessageManager {
                 });
         }
 
+        /**
+         * Reloads all messages from the database.
+         * This method clears the message cache and reloads all messages
+         * from the database, useful for applying external changes or
+         * recovering from cache corruption.
+         */
         public void reloadMessages() {
                 messageCache.clear();
                 loadMessages();
