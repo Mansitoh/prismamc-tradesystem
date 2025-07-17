@@ -14,7 +14,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class TradeCommand extends AMyCommand<Plugin> {
-    
+
     private final Plugin plugin;
     private final HashMap<UUID, Long> cooldowns;
     private final int cooldownSeconds;
@@ -27,7 +27,7 @@ public class TradeCommand extends AMyCommand<Plugin> {
         this.setDescription("Open trade selection menu with another player");
         this.setUsage("/trade <player>");
         this.setAliases("t", "tradear");
-        
+
         if (this.registerCommand()) {
             plugin.getLogger().info("Trade command registered successfully!");
         }
@@ -38,10 +38,10 @@ public class TradeCommand extends AMyCommand<Plugin> {
         if (args.length == 1) {
             String input = args[0].toLowerCase();
             return Bukkit.getOnlinePlayers().stream()
-                .map(Player::getName)
-                .filter(name -> name.toLowerCase().startsWith(input))
-                .filter(name -> !name.equals(sender.getName())) // Excluir al propio jugador
-                .collect(Collectors.toList());
+                    .map(Player::getName)
+                    .filter(name -> name.toLowerCase().startsWith(input))
+                    .filter(name -> !name.equals(sender.getName())) // Excluir al propio jugador
+                    .collect(Collectors.toList());
         }
         return super.tabComplete(sender, alias, args);
     }
@@ -54,58 +54,66 @@ public class TradeCommand extends AMyCommand<Plugin> {
         }
 
         Player player = (Player) sender;
-        
+
         // Check cooldown
         long currentTime = System.currentTimeMillis();
         if (cooldowns.containsKey(player.getUniqueId())) {
             long timeElapsed = currentTime - cooldowns.get(player.getUniqueId());
             if (timeElapsed < cooldownSeconds * 1000) {
                 int remainingSeconds = (int) ((cooldownSeconds * 1000 - timeElapsed) / 1000);
-                player.sendMessage(ChatColor.RED + "Please wait " + remainingSeconds + " seconds before using this command again!");
+                player.sendMessage(ChatColor.RED + "Please wait " + remainingSeconds
+                        + " seconds before using this command again!");
                 return true;
             }
         }
 
         if (args.length != 1) {
-            sender.sendMessage(ChatColor.RED + "Usage: " + this.getUsage());
+            plugin.getMessageManager().sendComponentMessage(player, "trade.errors.usage");
             return true;
         }
 
-        Player target = Bukkit.getPlayer(args[0]);
+        String targetPlayerName = args[0];
 
-        if (target == null) {
-            sender.sendMessage(ChatColor.RED + "Player not found!");
-            return true;
-        }
+        // Verificar si el jugador objetivo existe en la base de datos
+        plugin.getPlayerDataManager().findPlayerByNameIgnoreCase(targetPlayerName)
+                .thenAccept(targetPlayerData -> {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (targetPlayerData == null) {
+                            // El jugador nunca se conectó al servidor
+                            plugin.getMessageManager().sendComponentMessage(player,
+                                    "trade.errors.player_never_connected",
+                                    "player", targetPlayerName);
+                            return;
+                        }
 
-        if (target.equals(player)) {
-            sender.sendMessage(ChatColor.RED + "You cannot trade with yourself!");
-            return true;
-        }
+                        // El jugador existe en la base de datos
+                        UUID targetUUID = targetPlayerData.getUuid();
 
-        // Update cooldown
-        cooldowns.put(player.getUniqueId(), currentTime);
+                        if (targetUUID.equals(player.getUniqueId())) {
+                            plugin.getMessageManager().sendComponentMessage(player, "trade.errors.self_trade");
+                            return;
+                        }
 
-        // Verificar si ya existe un trade entre estos jugadores
-        plugin.getTradeManager().arePlayersInTrade(player.getUniqueId(), target.getUniqueId())
-            .thenAccept(inTrade -> {
-                if (inTrade) {
-                    player.sendMessage(ChatColor.RED + "Ya existe un trade activo con este jugador!");
-                    return;
-                }
-                
-                // Asegurarnos de que la apertura del GUI se realice en el hilo principal
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    PreTradeGUI preTradeGUI = new PreTradeGUI(player, target, plugin);
-                    preTradeGUI.openInventory();
+                        // Update cooldown
+                        cooldowns.put(player.getUniqueId(), currentTime);
+
+                        // Asegurarnos de que la apertura del GUI se realice en el hilo principal
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            // Crear PreTradeGUI pasando PlayerData del target en lugar de Player
+                            PreTradeGUI preTradeGUI = new PreTradeGUI(player, targetPlayerData, plugin);
+                            preTradeGUI.openInventory();
+                        });
+                    });
+                })
+                .exceptionally(throwable -> {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        plugin.getLogger().severe("Error checking player data: " + throwable.getMessage());
+                        plugin.getMessageManager().sendComponentMessage(player, "trade.errors.verification_error",
+                                "error", throwable.getMessage());
+                    });
+                    return null;
                 });
-            })
-            .exceptionally(throwable -> {
-                plugin.getLogger().severe("Error checking trade status: " + throwable.getMessage());
-                player.sendMessage(ChatColor.RED + "An error occurred while processing your trade request.");
-                return null;
-            });
-        
+
         return true;
     }
 }

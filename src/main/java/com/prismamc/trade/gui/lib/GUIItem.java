@@ -58,7 +58,10 @@ public class GUIItem {
     public GUIItem setLore(List<String> lore) {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setLore(lore);
+            List<String> coloredLore = lore.stream()
+                    .map(line -> legacySerializer.serialize(legacySerializer.deserialize(line)))
+                    .collect(Collectors.toList());
+            meta.setLore(coloredLore);
             item.setItemMeta(meta);
         }
         return this;

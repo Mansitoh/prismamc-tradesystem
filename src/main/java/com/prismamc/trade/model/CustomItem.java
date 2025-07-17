@@ -244,11 +244,29 @@ public class CustomItem {
         }
 
         try {
-            return miniMessage.deserialize(text);
-        } catch (Exception e) {
-            try {
+            // Verificar si el texto contiene tags de MiniMessage
+            if (text.contains("<") && text.contains(">")) {
+                // Intentar parsear como MiniMessage
+                return miniMessage.deserialize(text);
+            }
+
+            // Si no tiene tags MiniMessage, intentar como legacy
+            if (text.contains("§") || text.contains("&")) {
                 return legacySerializer.deserialize(text);
+            }
+
+            // Si no tiene formato especial, devolver como texto plano
+            return Component.text(text);
+
+        } catch (Exception e) {
+            // Si el parsing de MiniMessage falla, intentar legacy como fallback
+            try {
+                if (text.contains("§") || text.contains("&")) {
+                    return legacySerializer.deserialize(text);
+                }
+                return Component.text(text);
             } catch (Exception e2) {
+                // Si todo falla, devolver texto plano
                 return Component.text(text);
             }
         }

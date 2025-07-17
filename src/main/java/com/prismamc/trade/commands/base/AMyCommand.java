@@ -22,7 +22,8 @@ import org.bukkit.plugin.java.JavaPlugin;
  * 
  * @author redsarow
  */
-public abstract class AMyCommand<T extends JavaPlugin> extends Command implements CommandExecutor, PluginIdentifiableCommand {
+public abstract class AMyCommand<T extends JavaPlugin> extends Command
+        implements CommandExecutor, PluginIdentifiableCommand {
 
     private static CommandMap commandMap;
 
@@ -71,8 +72,7 @@ public abstract class AMyCommand<T extends JavaPlugin> extends Command implement
                 tabComplete.put(indice, Arrays.stream(arg).collect(
                         ArrayList::new,
                         (tabCommands, s) -> tabCommands.add(new TabCommand(indice, s, permission, beforeText)),
-                        ArrayList::addAll)
-                );
+                        ArrayList::addAll));
             }
         }
     }
@@ -120,12 +120,15 @@ public abstract class AMyCommand<T extends JavaPlugin> extends Command implement
     public List<String> tabComplete(CommandSender sender, String alias, String[] args) {
         int indice = args.length - 1;
 
-        if ((getPermission() != null && !sender.hasPermission(getPermission())) || tabComplete.size() == 0 || !tabComplete.containsKey(indice))
+        if ((getPermission() != null && !sender.hasPermission(getPermission())) || tabComplete.size() == 0
+                || !tabComplete.containsKey(indice))
             return super.tabComplete(sender, alias, args);
 
         List<String> list = tabComplete.get(indice).stream()
-                .filter(tabCommand -> tabCommand.getTextAvant() == null || tabCommand.getTextAvant().contains(args[indice - 1]))
-                .filter(tabCommand -> tabCommand.getPermission() == null || sender.hasPermission(tabCommand.getPermission()))
+                .filter(tabCommand -> tabCommand.getTextAvant() == null
+                        || tabCommand.getTextAvant().contains(args[indice - 1]))
+                .filter(tabCommand -> tabCommand.getPermission() == null
+                        || sender.hasPermission(tabCommand.getPermission()))
                 .filter(tabCommand -> tabCommand.getText().startsWith(args[indice]))
                 .map(TabCommand::getText)
                 .sorted(String.CASE_INSENSITIVE_ORDER)
@@ -135,13 +138,11 @@ public abstract class AMyCommand<T extends JavaPlugin> extends Command implement
     }
 
     private static class TabCommand {
-        private final int indice;
         private final String text;
         private final String permission;
         private final ArrayList<String> textAvant;
 
         private TabCommand(int indice, String text, String permission, String... textAvant) {
-            this.indice = indice;
             this.text = text;
             this.permission = permission;
             if (textAvant == null || textAvant.length < 1) {
@@ -155,10 +156,6 @@ public abstract class AMyCommand<T extends JavaPlugin> extends Command implement
 
         public String getText() {
             return text;
-        }
-
-        public int getIndice() {
-            return indice;
         }
 
         public String getPermission() {

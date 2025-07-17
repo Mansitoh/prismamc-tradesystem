@@ -29,7 +29,7 @@ public class PlayerDataManager {
     public CompletableFuture<PlayerData> loadPlayerData(Player player) {
         return CompletableFuture.supplyAsync(() -> {
             UUID uuid = player.getUniqueId();
-            
+
             // Check cache first
             if (cache.containsKey(uuid)) {
                 return cache.get(uuid);
@@ -38,9 +38,9 @@ public class PlayerDataManager {
             // Load from database usando el índice uuid
             Document hint = new Document("uuid", 1);
             Document doc = collection.find(Filters.eq("uuid", uuid.toString()))
-                                  .hint(hint)
-                                  .first();
-            
+                    .hint(hint)
+                    .first();
+
             PlayerData playerData;
             if (doc == null) {
                 // Create new player data with default values
@@ -66,8 +66,7 @@ public class PlayerDataManager {
             collection.replaceOne(
                     Filters.eq("uuid", playerData.getUuid().toString()),
                     doc,
-                    new ReplaceOptions().upsert(true)
-            );
+                    new ReplaceOptions().upsert(true));
 
             // Update cache
             cache.put(playerData.getUuid(), playerData);
@@ -80,10 +79,9 @@ public class PlayerDataManager {
 
     private PlayerData documentToPlayerData(Document doc) {
         return new PlayerData(
-            UUID.fromString(doc.getString("uuid")),
-            doc.getString("playerName"),
-            doc.getString("language")
-        );
+                UUID.fromString(doc.getString("uuid")),
+                doc.getString("playerName"),
+                doc.getString("language"));
     }
 
     public PlayerData getCachedPlayerData(UUID uuid) {
@@ -105,16 +103,16 @@ public class PlayerDataManager {
         return CompletableFuture.supplyAsync(() -> {
             List<PlayerData> players = new ArrayList<>();
             Document hint = new Document("language", 1).append("uuid", 1);
-            
+
             collection.find(Filters.eq("language", language))
-                     .hint(hint)
-                     .forEach(doc -> {
-                         PlayerData playerData = documentToPlayerData(doc);
-                         players.add(playerData);
-                         // Actualizar caché si el jugador no está en ella
-                         cache.putIfAbsent(playerData.getUuid(), playerData);
-                     });
-            
+                    .hint(hint)
+                    .forEach(doc -> {
+                        PlayerData playerData = documentToPlayerData(doc);
+                        players.add(playerData);
+                        // Actualizar caché si el jugador no está en ella
+                        cache.putIfAbsent(playerData.getUuid(), playerData);
+                    });
+
             return players;
         });
     }
@@ -126,15 +124,37 @@ public class PlayerDataManager {
         return CompletableFuture.supplyAsync(() -> {
             Document hint = new Document("playerName", 1);
             Document doc = collection.find(Filters.eq("playerName", playerName))
-                                  .hint(hint)
-                                  .first();
-            
+                    .hint(hint)
+                    .first();
+
             if (doc != null) {
                 PlayerData playerData = documentToPlayerData(doc);
                 cache.putIfAbsent(playerData.getUuid(), playerData);
                 return playerData;
             }
-            
+
+            return null;
+        });
+    }
+
+    /**
+     * Buscar jugador por nombre (case-insensitive)
+     */
+    public CompletableFuture<PlayerData> findPlayerByNameIgnoreCase(String playerName) {
+        return CompletableFuture.supplyAsync(() -> {
+            // Usar regex para búsqueda case-insensitive
+            Document filter = new Document("playerName",
+                    new Document("$regex", "^" + java.util.regex.Pattern.quote(playerName) + "$")
+                            .append("$options", "i"));
+
+            Document doc = collection.find(filter).first();
+
+            if (doc != null) {
+                PlayerData playerData = documentToPlayerData(doc);
+                cache.putIfAbsent(playerData.getUuid(), playerData);
+                return playerData;
+            }
+
             return null;
         });
     }

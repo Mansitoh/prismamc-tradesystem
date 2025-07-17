@@ -26,12 +26,11 @@ public class FileUtil {
     private final Plugin plugin;
     private YamlConfiguration config;
     private long lastModified;
-    private static final int BUFFER_SIZE = 8192;
 
     /**
      * Constructs a new FileUtil instance.
      *
-     * @param plugin The plugin instance
+     * @param plugin   The plugin instance
      * @param fileName The name of the file (with extension)
      */
     public FileUtil(@Nonnull Plugin plugin, @Nonnull String fileName) {
@@ -158,7 +157,8 @@ public class FileUtil {
                 try {
                     config.save(tempFile.toFile());
                     // Mover el archivo temporal al archivo real de forma atómica
-                    Files.move(tempFile, file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    Files.move(tempFile, file.toPath(), StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.ATOMIC_MOVE);
                     lastModified = file.lastModified();
                     return true;
                 } finally {
@@ -183,23 +183,23 @@ public class FileUtil {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String backupName = fileName.replace(".yml", "") + 
-                                  "_backup_" + 
-                                  System.currentTimeMillis() + 
-                                  ".yml";
+                String backupName = fileName.replace(".yml", "") +
+                        "_backup_" +
+                        System.currentTimeMillis() +
+                        ".yml";
                 Path backupDir = plugin.getDataFolder().toPath().resolve("backups");
                 Files.createDirectories(backupDir);
-                
+
                 Path backupFile = backupDir.resolve(backupName);
-                
+
                 // Usar NIO para una copia más eficiente
                 try (FileChannel source = FileChannel.open(file.toPath(), StandardOpenOption.READ);
-                     FileChannel target = FileChannel.open(backupFile, 
-                         StandardOpenOption.CREATE, 
-                         StandardOpenOption.WRITE)) {
+                        FileChannel target = FileChannel.open(backupFile,
+                                StandardOpenOption.CREATE,
+                                StandardOpenOption.WRITE)) {
                     source.transferTo(0, source.size(), target);
                 }
-                
+
                 return true;
             } catch (IOException e) {
                 plugin.getLogger().log(Level.WARNING, "Failed to create backup of " + fileName, e);
@@ -211,12 +211,13 @@ public class FileUtil {
     /**
      * Copies a directory or file to another location.
      *
-     * @param source The source file or directory
+     * @param source      The source file or directory
      * @param destination The destination file or directory
-     * @param excludes Optional array of file/directory names to exclude
+     * @param excludes    Optional array of file/directory names to exclude
      * @throws IOException if an I/O error occurs
      */
-    public static void copy(@Nonnull File source, @Nonnull File destination, @Nullable String... excludes) throws IOException {
+    public static void copy(@Nonnull File source, @Nonnull File destination, @Nullable String... excludes)
+            throws IOException {
         Path sourcePath = source.toPath();
         Path destinationPath = destination.toPath();
 
@@ -226,7 +227,7 @@ public class FileUtil {
                 if (shouldExclude(dir.getFileName().toString(), excludes)) {
                     return FileVisitResult.SKIP_SUBTREE;
                 }
-                
+
                 Path targetDir = destinationPath.resolve(sourcePath.relativize(dir));
                 try {
                     Files.copy(dir, targetDir, StandardCopyOption.COPY_ATTRIBUTES);
@@ -243,7 +244,7 @@ public class FileUtil {
                 if (shouldExclude(file.getFileName().toString(), excludes)) {
                     return FileVisitResult.CONTINUE;
                 }
-                
+
                 Path targetFile = destinationPath.resolve(sourcePath.relativize(file));
                 Files.copy(file, targetFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
                 return FileVisitResult.CONTINUE;
@@ -267,7 +268,8 @@ public class FileUtil {
 
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                if (exc != null) throw exc;
+                if (exc != null)
+                    throw exc;
                 Files.deleteIfExists(dir);
                 return FileVisitResult.CONTINUE;
             }
@@ -292,7 +294,7 @@ public class FileUtil {
     /**
      * Checks if a file or directory name should be excluded from operations.
      *
-     * @param name The name to check
+     * @param name     The name to check
      * @param excludes Array of names to exclude
      * @return true if the name should be excluded, false otherwise
      */
@@ -300,7 +302,7 @@ public class FileUtil {
         if (excludes == null || excludes.length == 0) {
             return false;
         }
-        
+
         for (String exclude : excludes) {
             if (exclude != null && name.equalsIgnoreCase(exclude)) {
                 return true;

@@ -7,12 +7,10 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
-import com.mongodb.client.model.Indexes;
 import com.mongodb.connection.ConnectionPoolSettings;
 import org.bson.Document;
 import org.bukkit.configuration.file.FileConfiguration;
 import java.util.logging.Logger;
-import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 public class MongoDBManager {
@@ -22,7 +20,7 @@ public class MongoDBManager {
     private MongoCollection<Document> playerDataCollection;
     private MongoCollection<Document> messagesCollection;
     private final Logger logger;
-    
+
     private static final int MIN_CONNECTIONS_PER_HOST = 5;
     private static final int MAX_CONNECTIONS_PER_HOST = 20;
     private static final int MAX_WAIT_TIME = 5000;
@@ -54,16 +52,15 @@ public class MongoDBManager {
 
     private MongoClientSettings createMongoClientSettings(FileConfiguration config, String uri) {
         ConnectionPoolSettings poolSettings = ConnectionPoolSettings.builder()
-            .minSize(MIN_CONNECTIONS_PER_HOST)
-            .maxSize(MAX_CONNECTIONS_PER_HOST)
-            .maxWaitTime(MAX_WAIT_TIME, TimeUnit.MILLISECONDS)
-            .maxConnectionIdleTime(MAX_CONNECTION_IDLE_TIME, TimeUnit.MILLISECONDS)
-            .build();
+                .minSize(MIN_CONNECTIONS_PER_HOST)
+                .maxSize(MAX_CONNECTIONS_PER_HOST)
+                .maxWaitTime(MAX_WAIT_TIME, TimeUnit.MILLISECONDS)
+                .maxConnectionIdleTime(MAX_CONNECTION_IDLE_TIME, TimeUnit.MILLISECONDS)
+                .build();
 
         MongoClientSettings.Builder settingsBuilder = MongoClientSettings.builder()
-            .applyToConnectionPoolSettings(builder -> builder.applySettings(poolSettings))
-            .applyToSocketSettings(builder -> 
-                builder.connectTimeout(CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS));
+                .applyToConnectionPoolSettings(builder -> builder.applySettings(poolSettings))
+                .applyToSocketSettings(builder -> builder.connectTimeout(CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS));
 
         if (uri != null && !uri.isEmpty()) {
             settingsBuilder.applyConnectionString(new ConnectionString(uri));
@@ -81,10 +78,11 @@ public class MongoDBManager {
         return settingsBuilder.build();
     }
 
-    private String createConnectionString(String host, int port, String username, String password, String authDatabase) {
+    private String createConnectionString(String host, int port, String username, String password,
+            String authDatabase) {
         if (!username.isEmpty() && !password.isEmpty()) {
             return String.format("mongodb://%s:%s@%s:%d/?authSource=%s",
-                username, password, host, port, authDatabase);
+                    username, password, host, port, authDatabase);
         }
         return String.format("mongodb://%s:%d", host, port);
     }
@@ -96,8 +94,8 @@ public class MongoDBManager {
     }
 
     private void initializeCollections() {
-        String[] collections = {"trades", "player_data", "messages"};
-        
+        String[] collections = { "trades", "player_data", "messages" };
+
         for (String collectionName : collections) {
             try {
                 if (!collectionExists(collectionName)) {
@@ -129,16 +127,16 @@ public class MongoDBManager {
         try {
             // Índice único para UUID, que es el identificador principal
             createUniqueIndex(playerDataCollection, "uuid", "player_uuid_index");
-            
+
             // Índice para búsquedas por nombre de jugador
             createIndex(playerDataCollection, "playerName", "player_name_index");
-            
+
             // Índice compuesto para búsquedas que incluyen idioma
             Document languageIndex = new Document()
-                .append("language", 1)
-                .append("uuid", 1);
+                    .append("language", 1)
+                    .append("uuid", 1);
             createIndex(playerDataCollection, languageIndex, "player_language_index");
-            
+
             // Índice para timestamps de última actualización (si se agrega en el futuro)
             createIndex(playerDataCollection, "lastUpdate", "player_last_update_index", true);
         } catch (Exception e) {
@@ -157,8 +155,8 @@ public class MongoDBManager {
 
             // Crear índice único para las claves de mensajes
             IndexOptions indexOptions = new IndexOptions()
-                .unique(true)
-                .name("message_key_index");
+                    .unique(true)
+                    .name("message_key_index");
             messagesCollection.createIndex(new Document("key", 1), indexOptions);
             logger.info("Created unique message key index successfully");
         } catch (Exception e) {
@@ -179,27 +177,27 @@ public class MongoDBManager {
 
             // Índices compuestos optimizados
             Document player1StateIndex = new Document()
-                .append("player1", 1)
-                .append("state", 1)
-                .append("timestamp", -1);
+                    .append("player1", 1)
+                    .append("state", 1)
+                    .append("timestamp", -1);
             createIndex(tradesCollection, player1StateIndex, "trade_player1_state_index");
 
             Document player2StateIndex = new Document()
-                .append("player2", 1)
-                .append("state", 1)
-                .append("timestamp", -1);
+                    .append("player2", 1)
+                    .append("state", 1)
+                    .append("timestamp", -1);
             createIndex(tradesCollection, player2StateIndex, "trade_player2_state_index");
 
             // Índice para búsquedas de trades activos
             Document activeTradesIndex = new Document()
-                .append("state", 1)
-                .append("timestamp", -1);
+                    .append("state", 1)
+                    .append("timestamp", -1);
             createIndex(tradesCollection, activeTradesIndex, "trade_active_index");
 
             // Índice para limpieza de trades expirados
             Document expirationIndex = new Document()
-                .append("state", 1)
-                .append("timestamp", 1);
+                    .append("state", 1)
+                    .append("timestamp", 1);
             createIndex(tradesCollection, expirationIndex, "trade_expiration_index");
         } catch (Exception e) {
             logger.warning("Error setting up trade indexes: " + e.getMessage());
@@ -228,9 +226,8 @@ public class MongoDBManager {
     private void createUniqueIndex(MongoCollection<Document> collection, String field, String indexName) {
         try {
             collection.createIndex(
-                new Document(field, 1),
-                new IndexOptions().unique(true).name(indexName)
-            );
+                    new Document(field, 1),
+                    new IndexOptions().unique(true).name(indexName));
             logger.info("Created unique index: " + indexName);
         } catch (Exception e) {
             if (!e.getMessage().contains("already exists")) {
@@ -250,8 +247,8 @@ public class MongoDBManager {
     private boolean collectionExists(String collectionName) {
         try {
             return database.listCollectionNames()
-                .into(new java.util.ArrayList<>())
-                .contains(collectionName);
+                    .into(new java.util.ArrayList<>())
+                    .contains(collectionName);
         } catch (Exception e) {
             logger.warning("Error checking if collection exists: " + e.getMessage());
             return false;
@@ -270,7 +267,8 @@ public class MongoDBManager {
     }
 
     public boolean isConnected() {
-        if (mongoClient == null || database == null) return false;
+        if (mongoClient == null || database == null)
+            return false;
         try {
             verifyConnection();
             return true;

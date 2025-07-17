@@ -11,9 +11,6 @@ import com.prismamc.trade.gui.lib.GUIItem;
 import com.prismamc.trade.model.TradeDocument;
 import com.prismamc.trade.manager.TradeManager.TradeState;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -25,17 +22,17 @@ public class MyTradesGUI extends GUI {
     private List<TradeDocument> filteredTrades; // Trades después de aplicar filtros
     private int currentPage = 0;
     private TradeFilter currentFilter = TradeFilter.ALL;
-    private static final int ITEMS_PER_PAGE = 36; // Reducido para hacer espacio a los filtros
+    private static final int ITEMS_PER_PAGE = 45; // Ahora podemos usar toda la zona principal
     private static final int PREV_PAGE_SLOT = 45;
     private static final int NEXT_PAGE_SLOT = 53;
     private static final int INFO_SLOT = 49;
-    
-    // Slots para filtros de estado (fila superior)
-    private static final int FILTER_ALL_SLOT = 1;
-    private static final int FILTER_PENDING_SLOT = 2;
-    private static final int FILTER_ACTIVE_SLOT = 3;
-    private static final int FILTER_COMPLETED_SLOT = 4;
-    private static final int FILTER_CANCELLED_SLOT = 5;
+
+    // Slots para filtros de estado (fila inferior - después de los borders)
+    private static final int FILTER_ALL_SLOT = 46;
+    private static final int FILTER_PENDING_SLOT = 47;
+    private static final int FILTER_ACTIVE_SLOT = 48;
+    private static final int FILTER_COMPLETED_SLOT = 50;
+    private static final int FILTER_CANCELLED_SLOT = 51;
 
     public enum TradeFilter {
         ALL("Todos", Material.CHEST),
@@ -43,17 +40,22 @@ public class MyTradesGUI extends GUI {
         ACTIVE("Activos", Material.LIME_WOOL),
         COMPLETED("Completados", Material.BLUE_WOOL),
         CANCELLED("Cancelados", Material.RED_WOOL);
-        
+
         private final String displayName;
         private final Material material;
-        
+
         TradeFilter(String displayName, Material material) {
             this.displayName = displayName;
             this.material = material;
         }
-        
-        public String getDisplayName() { return displayName; }
-        public Material getMaterial() { return material; }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public Material getMaterial() {
+            return material;
+        }
     }
 
     public MyTradesGUI(Player owner, Plugin plugin) {
@@ -79,117 +81,129 @@ public class MyTradesGUI extends GUI {
     private CompletableFuture<Void> loadTrades() {
         return CompletableFuture.supplyAsync(() -> {
             List<TradeDocument> loadedTrades = new ArrayList<>();
-            
+
             try {
                 // Obtener TODOS los documentos de trade que involucren al jugador
                 plugin.getMongoDBManager().getTradesCollection()
-                    .find(new org.bson.Document("$or", List.of(
-                        new org.bson.Document("player1", owner.getUniqueId().toString()),
-                        new org.bson.Document("player2", owner.getUniqueId().toString())
-                    )))
-                    .forEach(doc -> {
-                        TradeDocument trade = new TradeDocument(doc);
-                        loadedTrades.add(trade); // Agregar TODOS los trades sin filtrar
-                    });
-                
-                // Ejecutar debug si está habilitado
-                debugTrades(loadedTrades);
-                
+                        .find(new org.bson.Document("$or", List.of(
+                                new org.bson.Document("player1", owner.getUniqueId().toString()),
+                                new org.bson.Document("player2", owner.getUniqueId().toString()))))
+                        .forEach(doc -> {
+                            TradeDocument trade = new TradeDocument(doc);
+                            loadedTrades.add(trade); // Agregar TODOS los trades sin filtrar
+                        });
+
             } catch (Exception e) {
-                plugin.getLogger().severe(String.format("❌ ERROR cargando trades para %s: %s", owner.getName(), e.getMessage()));
+                plugin.getLogger()
+                        .severe(String.format("❌ ERROR cargando trades para %s: %s", owner.getName(), e.getMessage()));
                 e.printStackTrace();
             }
-            
+
             this.allTrades = loadedTrades;
             this.filteredTrades = new ArrayList<>(loadedTrades); // Inicialmente mostrar todos
             return null;
         });
     }
 
-    /**
-     * Método de debug separado - se puede eliminar fácilmente
-     */
-    private void debugTrades(List<TradeDocument> trades) {
-        plugin.getLogger().info("=== DEBUG MyTradesGUI ===");
-        plugin.getLogger().info("Jugador: " + owner.getName() + " (UUID: " + owner.getUniqueId() + ")");
-        plugin.getLogger().info("Total trades encontrados en DB: " + trades.size());
-        
-        if (trades.isEmpty()) {
-            plugin.getLogger().info("❌ No se encontraron trades para este jugador en la base de datos");
-        } else {
-            plugin.getLogger().info("✅ Detalles de cada trade:");
-            
-            for (TradeDocument trade : trades) {
-                String player1Name = plugin.getServer().getOfflinePlayer(trade.getPlayer1()).getName();
-                String player2Name = plugin.getServer().getOfflinePlayer(trade.getPlayer2()).getName();
-                boolean isPlayer1 = trade.getPlayer1().equals(owner.getUniqueId());
-                String otherPlayer = isPlayer1 ? player2Name : player1Name;
-                
-                plugin.getLogger().info("Trade #" + trade.getTradeId() + ":");
-                plugin.getLogger().info("  - Estado: " + trade.getState());
-                plugin.getLogger().info("  - Player1: " + player1Name + " (" + trade.getPlayer1() + ")");
-                plugin.getLogger().info("  - Player2: " + player2Name + " (" + trade.getPlayer2() + ")");
-                plugin.getLogger().info("  - " + owner.getName() + " es: " + (isPlayer1 ? "Player1" : "Player2"));
-                plugin.getLogger().info("  - Trading con: " + otherPlayer);
-                plugin.getLogger().info("  - Items enviados a Player1: " + trade.areItemsSentToPlayer1());
-                plugin.getLogger().info("  - Items enviados a Player2: " + trade.areItemsSentToPlayer2());
-                plugin.getLogger().info("  ---");
-            }
-            
-            // Resumen por estados
-            plugin.getLogger().info("✅ Trades por estado:");
-            trades.stream()
-                .collect(java.util.stream.Collectors.groupingBy(TradeDocument::getState))
-                .forEach((state, tradeList) -> {
-                    plugin.getLogger().info("  - " + state + ": " + tradeList.size() + " trades");
-                });
-        }
-        plugin.getLogger().info("========================");
-    }
-
     private void setupBorders() {
-        GUIItem border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-            .setName("§7 ");
-        
-        for (int i = 45; i < 54; i++) {
-            if (i != INFO_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT) {
-                inventory.setItem(i, border.getItemStack());
+        // Usar ItemManager como en PreTradeGUI
+        ItemStack borderItem = plugin.getItemManager().getItemStack(owner, "gui.decorative.border");
+
+        if (borderItem != null) {
+            for (int i = 45; i < 54; i++) {
+                // Excluir slots ocupados por otros elementos
+                if (i != INFO_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT &&
+                        i != FILTER_ALL_SLOT && i != FILTER_PENDING_SLOT && i != FILTER_ACTIVE_SLOT &&
+                        i != FILTER_COMPLETED_SLOT && i != FILTER_CANCELLED_SLOT) {
+                    inventory.setItem(i, borderItem.clone());
+                }
+            }
+        } else {
+            // Fallback si el item no existe
+            GUIItem border = new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+                    .setName("§7 ");
+
+            for (int i = 45; i < 54; i++) {
+                // Excluir slots ocupados por otros elementos
+                if (i != INFO_SLOT && i != PREV_PAGE_SLOT && i != NEXT_PAGE_SLOT &&
+                        i != FILTER_ALL_SLOT && i != FILTER_PENDING_SLOT && i != FILTER_ACTIVE_SLOT &&
+                        i != FILTER_COMPLETED_SLOT && i != FILTER_CANCELLED_SLOT) {
+                    inventory.setItem(i, border.getItemStack());
+                }
             }
         }
     }
 
     private void updatePaginationButtons() {
-        GUIItem prevPage = new GUIItem(Material.ARROW)
-            .setName("§ePágina Anterior")
-            .setLore("§7Click para ir a la página anterior");
-        
-        GUIItem nextPage = new GUIItem(Material.ARROW)
-            .setName("§eSiguiente Página")
-            .setLore("§7Click para ir a la siguiente página");
-
+        // Usar ItemManager como en PreTradeGUI para botón anterior
         if (currentPage > 0) {
-            inventory.setItem(PREV_PAGE_SLOT, prevPage.getItemStack());
+            ItemStack prevPageItem = plugin.getItemManager().getItemStack(owner, "gui.navigation.previous_page");
+            if (prevPageItem != null) {
+                inventory.setItem(PREV_PAGE_SLOT, prevPageItem);
+            } else {
+                // Fallback
+                GUIItem prevPage = new GUIItem(Material.ARROW)
+                        .setName("§ePágina Anterior")
+                        .setLore("§7Click para ir a la página anterior");
+                inventory.setItem(PREV_PAGE_SLOT, prevPage.getItemStack());
+            }
         } else {
-            inventory.setItem(PREV_PAGE_SLOT, new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-                .setName("§7 ").getItemStack());
+            ItemStack disabledItem = plugin.getItemManager().getItemStack(owner, "gui.navigation.disabled_page");
+            if (disabledItem != null) {
+                inventory.setItem(PREV_PAGE_SLOT, disabledItem);
+            } else {
+                // Fallback
+                inventory.setItem(PREV_PAGE_SLOT, new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+                        .setName("§7 ").getItemStack());
+            }
         }
 
+        // Usar ItemManager para botón siguiente
         if (hasNextPage()) {
-            inventory.setItem(NEXT_PAGE_SLOT, nextPage.getItemStack());
+            ItemStack nextPageItem = plugin.getItemManager().getItemStack(owner, "gui.navigation.next_page");
+            if (nextPageItem != null) {
+                inventory.setItem(NEXT_PAGE_SLOT, nextPageItem);
+            } else {
+                // Fallback
+                GUIItem nextPage = new GUIItem(Material.ARROW)
+                        .setName("§eSiguiente Página")
+                        .setLore("§7Click para ir a la siguiente página");
+                inventory.setItem(NEXT_PAGE_SLOT, nextPage.getItemStack());
+            }
         } else {
-            inventory.setItem(NEXT_PAGE_SLOT, new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
-                .setName("§7 ").getItemStack());
+            ItemStack disabledItem = plugin.getItemManager().getItemStack(owner, "gui.navigation.disabled_page");
+            if (disabledItem != null) {
+                inventory.setItem(NEXT_PAGE_SLOT, disabledItem);
+            } else {
+                // Fallback
+                inventory.setItem(NEXT_PAGE_SLOT, new GUIItem(Material.GRAY_STAINED_GLASS_PANE)
+                        .setName("§7 ").getItemStack());
+            }
         }
     }
 
     private void setupInfoSign() {
-        GUIItem infoSign = new GUIItem(Material.OAK_SIGN)
-            .setName("§eInformación")
-            .setLore(
-                "§7Total de trades: §f" + filteredTrades.size(),
-                "§7Página: §f" + (currentPage + 1)
-            );
-        inventory.setItem(INFO_SLOT, infoSign.getItemStack());
+        // Usar el nuevo item específico para MyTradesGUI
+        int totalPages = Math.max(1, (int) Math.ceil((double) filteredTrades.size() / ITEMS_PER_PAGE));
+
+        ItemStack infoItem = plugin.getItemManager().getItemStack(owner, "gui.info.my_trades_info",
+                "total_trades", String.valueOf(allTrades.size()),
+                "filter_name", currentFilter.getDisplayName(),
+                "filtered_count", String.valueOf(filteredTrades.size()),
+                "current_page", String.valueOf(currentPage + 1),
+                "total_pages", String.valueOf(totalPages));
+
+        if (infoItem != null) {
+            inventory.setItem(INFO_SLOT, infoItem);
+        } else {
+            // Fallback si el item no existe
+            GUIItem infoSign = new GUIItem(Material.OAK_SIGN)
+                    .setName("§eInformación")
+                    .setLore(
+                            "§7Total de trades: §f" + filteredTrades.size(),
+                            "§7Página: §f" + (currentPage + 1));
+            inventory.setItem(INFO_SLOT, infoSign.getItemStack());
+        }
     }
 
     private void displayTrades() {
@@ -210,20 +224,58 @@ public class MyTradesGUI extends GUI {
             String otherPlayerUUID = isPlayer1 ? trade.getPlayer2().toString() : trade.getPlayer1().toString();
             String otherPlayerName = plugin.getServer().getOfflinePlayer(UUID.fromString(otherPlayerUUID)).getName();
 
-            Material material = trade.getState() == TradeState.ACTIVE ? Material.LIME_WOOL : Material.YELLOW_WOOL;
-            GUIItem tradeItem = new GUIItem(material)
-                .setName("§eTrade #" + trade.getTradeId())
-                .setLore(
-                    "§7Estado: " + (trade.getState() == TradeState.ACTIVE ? "§aActivo" : "§6Completado"),
-                    "§7Trading con: §f" + otherPlayerName,
-                    "§7Items recibidos: " + (isPlayer1 ? (trade.areItemsSentToPlayer1() ? "§aSí" : "§cNo") 
-                                                      : (trade.areItemsSentToPlayer2() ? "§aSí" : "§cNo")),
-                    "",
-                    "§eClick para ver detalles"
-                );
-            
-            inventory.setItem(slot, tradeItem.getItemStack());
+            // Intentar usar ItemManager para items de trade
+            String tradeState = getTradeStateDisplayName(trade.getState());
+            String itemsReceived = isPlayer1 ? getItemsReceivedDisplayName(trade.areItemsSentToPlayer1())
+                    : getItemsReceivedDisplayName(trade.areItemsSentToPlayer2());
+
+            ItemStack tradeItem = plugin.getItemManager().getItemStack(owner, "gui.buttons.trade_display",
+                    "trade_id", String.valueOf(trade.getTradeId()),
+                    "state", tradeState,
+                    "other_player", otherPlayerName,
+                    "items_received", itemsReceived);
+
+            if (tradeItem == null) {
+                // Fallback usando GUIItem manual
+                Material material = trade.getState() == TradeState.ACTIVE ? Material.LIME_WOOL : Material.YELLOW_WOOL;
+                GUIItem fallbackItem = new GUIItem(material)
+                        .setName("§eTrade #" + trade.getTradeId())
+                        .setLore(
+                                "§7Estado: " + tradeState,
+                                "§7Trading con: §f" + otherPlayerName,
+                                "§7Items recibidos: " + itemsReceived,
+                                "",
+                                "§eClick para ver detalles");
+                tradeItem = fallbackItem.getItemStack();
+            }
+
+            inventory.setItem(slot, tradeItem);
         }
+    }
+
+    /**
+     * Obtener nombre de display para el estado del trade (en formato MiniMessage)
+     */
+    private String getTradeStateDisplayName(TradeState state) {
+        switch (state) {
+            case ACTIVE:
+                return "<green>Activo</green>";
+            case COMPLETED:
+                return "<gold>Completado</gold>";
+            case PENDING:
+                return "<yellow>Pendiente</yellow>";
+            case CANCELLED:
+                return "<red>Cancelado</red>";
+            default:
+                return "<gray>Desconocido</gray>";
+        }
+    }
+
+    /**
+     * Obtener el estado de items recibidos (en formato MiniMessage)
+     */
+    private String getItemsReceivedDisplayName(boolean received) {
+        return received ? "<green>Sí</green>" : "<red>No</red>";
     }
 
     private boolean hasNextPage() {
@@ -233,7 +285,7 @@ public class MyTradesGUI extends GUI {
     @Override
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        
+
         int clickedSlot = event.getRawSlot();
 
         if (clickedSlot == PREV_PAGE_SLOT && currentPage > 0) {
@@ -260,68 +312,129 @@ public class MyTradesGUI extends GUI {
                 handleTradeClick(trade);
             }
         }
-        
+
         // Manejo de clicks en los botones de filtro
-        if (clickedSlot >= FILTER_ALL_SLOT && clickedSlot <= FILTER_CANCELLED_SLOT) {
-            int filterIndex = clickedSlot - FILTER_ALL_SLOT;
-            TradeFilter selectedFilter = TradeFilter.values()[filterIndex];
+        TradeFilter selectedFilter = getFilterFromSlot(clickedSlot);
+        if (selectedFilter != null) {
             setCurrentFilter(selectedFilter);
             updateFilterButtons();
             displayTrades();
+            return;
         }
     }
 
     private void setCurrentFilter(TradeFilter filter) {
         this.currentFilter = filter;
         this.filteredTrades = new ArrayList<>();
-        
+
         for (TradeDocument trade : allTrades) {
             if (matchesFilter(trade, filter)) {
                 filteredTrades.add(trade);
             }
         }
-        
+
         this.currentPage = 0; // Reiniciar a la primera página al cambiar el filtro
         setupInfoSign(); // Actualizar contador
     }
 
     private void setupFilterButtons() {
-        // Limpiar la fila superior de filtros
-        for (int i = 0; i < 9; i++) {
-            inventory.setItem(i, null);
-        }
-        
-        // Configurar botones de filtro
-        updateFilterButtons();
-    }
-    
-    private void updateFilterButtons() {
         for (TradeFilter filter : TradeFilter.values()) {
-            int slot = FILTER_ALL_SLOT + filter.ordinal();
-            
+            // Obtener el slot específico para cada filtro
+            int slot = getSlotForFilter(filter);
+            if (slot == -1)
+                continue; // Skip si no hay slot definido
+
             // Contar trades para este filtro
             int count = getCountForFilter(filter);
-            
-            GUIItem filterItem = new GUIItem(filter.getMaterial())
-                .setName("§e" + filter.getDisplayName() + " §7(" + count + ")")
-                .setLore("§7Click para filtrar por " + filter.getDisplayName().toLowerCase());
-            
-            // Marcar el filtro actual con encantamiento
-            if (filter == currentFilter) {
-                filterItem.addEnchant(org.bukkit.enchantments.Enchantment.DURABILITY, 1, true);
-                filterItem.setName("§a" + filter.getDisplayName() + " §7(" + count + ")");
-                filterItem.addLore("§a► Filtro actual");
+
+            // Intentar usar ItemManager para botones de filtro con más parámetros
+            String filterKey = "gui.buttons.filter_" + filter.name().toLowerCase();
+            ItemStack filterItem = plugin.getItemManager().getItemStack(owner, filterKey,
+                    "count", String.valueOf(count),
+                    "filter_name", filter.getDisplayName(),
+                    "current_page", String.valueOf(currentPage + 1));
+
+            if (filterItem == null) {
+                // Fallback usando GUIItem manual
+                GUIItem fallbackItem = new GUIItem(filter.getMaterial())
+                        .setName("§e" + filter.getDisplayName() + " §7(" + count + ")")
+                        .setLore("§7Click para filtrar por " + filter.getDisplayName().toLowerCase());
+
+                // Marcar el filtro actual
+                if (filter == currentFilter) {
+                    fallbackItem.setName("§a" + filter.getDisplayName() + " §7(" + count + ")");
+                    // Añadir lore adicional manualmente
+                    fallbackItem.setLore("§7Click para filtrar por " + filter.getDisplayName().toLowerCase(),
+                            "§a► Filtro actual");
+                }
+
+                filterItem = fallbackItem.getItemStack();
+
+                // Aplicar encantamiento después de obtener el ItemStack
+                if (filter == currentFilter) {
+                    filterItem.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.UNBREAKING, 1);
+                }
+            } else {
+                // Si encontramos el item del ItemManager, aplicar encantamiento para filtro
+                // actual
+                if (filter == currentFilter) {
+                    filterItem.addUnsafeEnchantment(org.bukkit.enchantments.Enchantment.UNBREAKING, 1);
+                }
             }
-            
-            inventory.setItem(slot, filterItem.getItemStack());
+
+            inventory.setItem(slot, filterItem);
         }
     }
-    
+
+    /**
+     * Obtener el slot específico para cada filtro
+     */
+    private int getSlotForFilter(TradeFilter filter) {
+        switch (filter) {
+            case ALL:
+                return FILTER_ALL_SLOT;
+            case PENDING:
+                return FILTER_PENDING_SLOT;
+            case ACTIVE:
+                return FILTER_ACTIVE_SLOT;
+            case COMPLETED:
+                return FILTER_COMPLETED_SLOT;
+            case CANCELLED:
+                return FILTER_CANCELLED_SLOT;
+            default:
+                return -1;
+        }
+    }
+
+    /**
+     * Mapear slot clickeado a filtro correspondiente
+     */
+    private TradeFilter getFilterFromSlot(int slot) {
+        switch (slot) {
+            case FILTER_ALL_SLOT:
+                return TradeFilter.ALL;
+            case FILTER_PENDING_SLOT:
+                return TradeFilter.PENDING;
+            case FILTER_ACTIVE_SLOT:
+                return TradeFilter.ACTIVE;
+            case FILTER_COMPLETED_SLOT:
+                return TradeFilter.COMPLETED;
+            case FILTER_CANCELLED_SLOT:
+                return TradeFilter.CANCELLED;
+            default:
+                return null;
+        }
+    }
+
+    private void updateFilterButtons() {
+        setupFilterButtons(); // Reutilizar la lógica mejorada
+    }
+
     private int getCountForFilter(TradeFilter filter) {
         if (filter == TradeFilter.ALL) {
             return allTrades.size();
         }
-        
+
         int count = 0;
         for (TradeDocument trade : allTrades) {
             if (matchesFilter(trade, filter)) {
@@ -330,25 +443,14 @@ public class MyTradesGUI extends GUI {
         }
         return count;
     }
-    
+
     private boolean matchesFilter(TradeDocument trade, TradeFilter filter) {
         switch (filter) {
             case ALL:
                 return true;
             case PENDING:
-                // Lógica específica para PENDING: 
-                // Solo mostrar si es PENDING y este jugador NO ha puesto items aún
-                if (trade.getState() == TradeState.PENDING) {
-                    boolean isPlayer1 = trade.getPlayer1().equals(owner.getUniqueId());
-                    if (isPlayer1) {
-                        // Soy player1, mostrar si yo NO he puesto items
-                        return trade.getPlayer1Items().isEmpty();
-                    } else {
-                        // Soy player2, mostrar si yo NO he puesto items
-                        return trade.getPlayer2Items().isEmpty();
-                    }
-                }
-                return false;
+                // Mostrar trades en estado PENDING sin importar los items
+                return trade.getState() == TradeState.PENDING;
             case ACTIVE:
                 return trade.getState() == TradeState.ACTIVE;
             case COMPLETED:
@@ -364,60 +466,150 @@ public class MyTradesGUI extends GUI {
         // Determinar si el jugador es player1 o player2
         boolean isPlayer1 = trade.getPlayer1().equals(owner.getUniqueId());
         UUID otherPlayerUUID = isPlayer1 ? trade.getPlayer2() : trade.getPlayer1();
-        
-        if (trade.getState() == TradeState.ACTIVE) {
+
+        if (trade.getState() == TradeState.PENDING) {
+            // Para trades pendientes, verificar si este jugador necesita agregar items
+            boolean needsToAddItems = false;
+
+            if (isPlayer1) {
+                // Soy player1, verificar si NO he puesto items aún
+                needsToAddItems = trade.getPlayer1Items().isEmpty();
+            } else {
+                // Soy player2, verificar si NO he puesto items aún
+                needsToAddItems = trade.getPlayer2Items().isEmpty();
+            }
+
+            if (needsToAddItems) {
+                // Abrir PreTradeGUI en modo respuesta para que pueda agregar items
+                // No necesitamos al otro jugador online para esto
+                String otherPlayerName = plugin.getServer().getOfflinePlayer(otherPlayerUUID).getName();
+
+                // Crear un PreTradeGUI usando solo la información necesaria
+                PreTradeGUI preTradeGUI = new PreTradeGUI(owner, otherPlayerName, otherPlayerUUID, plugin, true,
+                        trade.getTradeId());
+                preTradeGUI.openInventory();
+                return;
+            } else {
+                // El jugador ya agregó sus items, mostrar vista previa
+                plugin.getTradeManager().getTradeItems(trade.getTradeId(), otherPlayerUUID)
+                        .thenAccept(items -> {
+                            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                String otherPlayerName = plugin.getServer().getOfflinePlayer(otherPlayerUUID).getName();
+                                ViewTradeGUI viewTradeGUI = new ViewTradeGUI(
+                                        owner, otherPlayerName, otherPlayerUUID, plugin, items, trade.getTradeId());
+                                viewTradeGUI.setOnlyPreview(true);
+                                viewTradeGUI.openInventory();
+                            });
+                        })
+                        .exceptionally(throwable -> {
+                            plugin.getLogger()
+                                    .severe(String.format("Error cargando items del trade: %s",
+                                            throwable.getMessage()));
+                            plugin.getMessageManager().sendComponentMessage(owner,
+                                    "mytrades.error.loading_trade_items");
+                            return null;
+                        });
+                return;
+            }
+        } else if (trade.getState() == TradeState.ACTIVE) {
             // Abrir el GUI de trades activos
             plugin.getTradeManager().getTradeItems(trade.getTradeId(), otherPlayerUUID)
-                .thenAccept(items -> {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        ViewTradeGUI viewTradeGUI = new ViewTradeGUI(
-                            owner, (Player) plugin.getServer().getOfflinePlayer(otherPlayerUUID),
-                            plugin,
-                            items,
-                            trade.getTradeId()
-                        );
-                        viewTradeGUI.openInventory();
+                    .thenAccept(items -> {
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            String otherPlayerName = plugin.getServer().getOfflinePlayer(otherPlayerUUID).getName();
+                            ViewTradeGUI viewTradeGUI = new ViewTradeGUI(
+                                    owner, otherPlayerName, otherPlayerUUID, plugin, items, trade.getTradeId());
+                            viewTradeGUI.setOnlyPreview(true);
+                            viewTradeGUI.setConfirmationView(true);
+                            viewTradeGUI.openInventory();
+                        });
+                    })
+                    .exceptionally(throwable -> {
+                        plugin.getLogger()
+                                .severe(String.format("Error cargando items del trade: %s", throwable.getMessage()));
+                        plugin.getMessageManager().sendComponentMessage(owner, "mytrades.error.loading_trade_items");
+                        return null;
                     });
-                })
-                .exceptionally(throwable -> {
-                    plugin.getLogger().severe(String.format("Error cargando items del trade: %s", throwable.getMessage()));
-                    owner.sendMessage("§cError al cargar los items del trade.");
-                    return null;
-                });
         } else if (trade.getState() == TradeState.COMPLETED) {
-            // Para trades completados, obtener y dar los items
-            plugin.getTradeManager().getAndRemoveTradeItems(trade.getTradeId(), otherPlayerUUID)
-                .thenAccept(items -> {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        // Dar items al jugador
-                        for (ItemStack item : items) {
-                            if (item != null && item.getType() != Material.AIR) {
-                                if (owner.getInventory().firstEmpty() != -1) {
-                                    owner.getInventory().addItem(item.clone());
-                                } else {
-                                    owner.getWorld().dropItemNaturally(owner.getLocation(), item.clone());
-                                    owner.sendMessage("§eTu inventario está lleno! Algunos items fueron dropeados al suelo.");
-                                }
-                            }
-                        }
-                        
-                        // Actualizar el estado de items enviados
-                        plugin.getTradeManager().updateItemsSentStatus(
-                            trade.getTradeId(),
-                            owner.getUniqueId(),
-                            true
-                        ).thenRun(() -> {
-                            owner.sendMessage("§aHas recibido los items del trade #" + trade.getTradeId());
-                            // Recargar el GUI
+            // Para trades completados, verificar si el jugador ya recibió sus items
+            boolean hasReceivedItems = isPlayer1 ? trade.areItemsSentToPlayer1() : trade.areItemsSentToPlayer2();
+
+            if (hasReceivedItems) {
+                // El jugador ya recibió sus items, mostrar mensaje
+                plugin.getMessageManager().sendComponentMessage(owner, "mytrades.completed.already_received",
+                        "trade_id", String.valueOf(trade.getTradeId()));
+                return;
+            }
+
+            // El jugador aún no ha recibido sus items, dárselos ahora
+            // Obtener los items que debe recibir este jugador
+            List<ItemStack> itemsToReceive;
+            if (isPlayer1) {
+                // Player1 debe recibir los items de player2
+                itemsToReceive = trade.getPlayer2Items();
+            } else {
+                // Player2 debe recibir los items de player1
+                itemsToReceive = trade.getPlayer1Items();
+            }
+
+            if (itemsToReceive == null || itemsToReceive.isEmpty()) {
+                // No hay items para recibir
+                plugin.getMessageManager().sendComponentMessage(owner, "mytrades.completed.no_items_to_receive",
+                        "trade_id", String.valueOf(trade.getTradeId()));
+                return;
+            }
+
+            // Dar items al jugador
+            for (ItemStack item : itemsToReceive) {
+                if (item != null && item.getType() != Material.AIR) {
+                    if (owner.getInventory().firstEmpty() != -1) {
+                        owner.getInventory().addItem(item.clone());
+                    } else {
+                        // Inventario lleno, dropear items cerca del jugador
+                        owner.getWorld().dropItemNaturally(owner.getLocation(), item.clone());
+                        plugin.getMessageManager().sendComponentMessage(owner, "mytrades.completed.inventory_full");
+                    }
+                }
+            }
+
+            // Actualizar el estado de items enviados
+            plugin.getTradeManager().updateItemsSentStatus(
+                    trade.getTradeId(),
+                    owner.getUniqueId(),
+                    true).thenRun(() -> {
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            plugin.getMessageManager().sendComponentMessage(owner,
+                                    "mytrades.completed.items_received", "trade_id",
+                                    String.valueOf(trade.getTradeId()));
+                            // Recargar el GUI para actualizar el estado
                             initializeItems();
                         });
+                    })
+                    .exceptionally(throwable -> {
+                        plugin.getLogger()
+                                .severe(String.format("Error al actualizar estado de items: %s",
+                                        throwable.getMessage()));
+                        plugin.getMessageManager().sendComponentMessage(owner, "mytrades.error.updating_item_status");
+                        return null;
                     });
-                })
-                .exceptionally(throwable -> {
-                    plugin.getLogger().severe(String.format("Error al dar items del trade: %s", throwable.getMessage()));
-                    owner.sendMessage("§cError al recibir los items del trade.");
-                    return null;
-                });
+        } else {
+            // Para trades cancelados o en otros estados, solo mostrar información
+            plugin.getTradeManager().getTradeItems(trade.getTradeId(), otherPlayerUUID)
+                    .thenAccept(items -> {
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            String otherPlayerName = plugin.getServer().getOfflinePlayer(otherPlayerUUID).getName();
+                            ViewTradeGUI viewTradeGUI = new ViewTradeGUI(
+                                    owner, otherPlayerName, otherPlayerUUID, plugin, items, trade.getTradeId());
+                            viewTradeGUI.setOnlyPreview(true);
+                            viewTradeGUI.openInventory();
+                        });
+                    })
+                    .exceptionally(throwable -> {
+                        plugin.getLogger()
+                                .severe(String.format("Error cargando items del trade: %s", throwable.getMessage()));
+                        plugin.getMessageManager().sendComponentMessage(owner, "mytrades.error.loading_trade_items");
+                        return null;
+                    });
         }
     }
 }

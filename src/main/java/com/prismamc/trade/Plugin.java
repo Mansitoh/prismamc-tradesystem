@@ -10,7 +10,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import com.prismamc.trade.commands.TradeCommand;
 import com.prismamc.trade.commands.TradeResponseCommand;
+import com.prismamc.trade.commands.TradeConfirmCommand;
 import com.prismamc.trade.commands.MyTradesCommand;
+import com.prismamc.trade.commands.ViewTradesCommand;
 import com.prismamc.trade.gui.lib.GUIListener;
 import com.prismamc.trade.listeners.PlayerJoinListener;
 import com.prismamc.trade.manager.ItemManager;
@@ -35,13 +37,19 @@ public class Plugin extends JavaPlugin implements Listener {
     @SuppressWarnings("unused") // Used via reflection
     private final TradeResponseCommand tradeDeclineCommand;
     @SuppressWarnings("unused") // Used via reflection
+    private final TradeConfirmCommand tradeConfirmCommand;
+    @SuppressWarnings("unused") // Used via reflection
     private final MyTradesCommand myTradesCommand;
+    @SuppressWarnings("unused") // Used via reflection
+    private final ViewTradesCommand viewTradesCommand;
 
     public Plugin() {
         this.tradeCommand = null;
         this.tradeAcceptCommand = null;
         this.tradeDeclineCommand = null;
+        this.tradeConfirmCommand = null;
         this.myTradesCommand = null;
+        this.viewTradesCommand = null;
     }
 
     @Override
@@ -129,9 +137,17 @@ public class Plugin extends JavaPlugin implements Listener {
             f.setAccessible(true);
             f.set(this, new TradeResponseCommand(this, false));
 
+            f = getClass().getDeclaredField("tradeConfirmCommand");
+            f.setAccessible(true);
+            f.set(this, new TradeConfirmCommand(this));
+
             f = getClass().getDeclaredField("myTradesCommand");
             f.setAccessible(true);
             f.set(this, new MyTradesCommand(this));
+
+            f = getClass().getDeclaredField("viewTradesCommand");
+            f.setAccessible(true);
+            f.set(this, new ViewTradesCommand(this));
 
             getLogger().info("Comandos de trade registrados exitosamente!");
         } catch (Exception e) {

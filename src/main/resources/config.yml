@@ -13,8 +13,18 @@ mongodb:
 commands:
   trade:
     cooldown: 5 # Cooldown in seconds between trade commands
+  viewtrades:
+    enabled: true
+    permission: "prismamc.trade.admin.viewtrades"
+    description: "Allows administrators to view trades of any player"
 
 # Player Settings
 player:
   default-language: "en" # Default language for new players
+
+# Admin Settings
+admin:
+  permissions:
+    viewtrades: "prismamc.trade.admin.viewtrades"
+    moderatetrades: "prismamc.trade.admin.moderate" # Para futuras funciones de moderación
 

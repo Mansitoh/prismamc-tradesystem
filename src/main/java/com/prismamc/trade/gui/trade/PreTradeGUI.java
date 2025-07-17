@@ -19,6 +19,7 @@ import com.prismamc.trade.Plugin;
 import com.prismamc.trade.gui.lib.GUI;
 import com.prismamc.trade.gui.lib.GUIItem;
 import com.prismamc.trade.manager.TradeManager;
+import com.prismamc.trade.model.PlayerData;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -26,6 +27,7 @@ import net.kyori.adventure.text.event.ClickEvent;
 public class PreTradeGUI extends GUI {
     private final Player initiator;
     private final Player target;
+    private final PlayerData targetPlayerData; // Nueva variable para almacenar PlayerData del target
     private final boolean isResponse;
     private long tradeId;
     private int currentPage = 0;
@@ -71,10 +73,46 @@ public class PreTradeGUI extends GUI {
         this(owner, target, plugin, false, -1);
     }
 
+    public PreTradeGUI(Player owner, PlayerData targetPlayerData, Plugin plugin) {
+        this(owner, targetPlayerData, plugin, false, -1);
+    }
+
     public PreTradeGUI(Player owner, Player target, Plugin plugin, boolean isResponse, long tradeId) {
         super(owner, getGUITitle(plugin, owner, isResponse), 54);
         this.initiator = owner;
         this.target = target;
+        this.targetPlayerData = null; // Will be loaded later
+        this.isResponse = isResponse;
+        this.tradeId = tradeId;
+        this.itemSlots = new ConcurrentHashMap<>();
+        this.closedByButton = new AtomicBoolean(false);
+        this.isProcessing = new AtomicBoolean(false);
+        this.isDirty = new AtomicBoolean(false);
+    }
+
+    public PreTradeGUI(Player owner, PlayerData targetPlayerData, Plugin plugin, boolean isResponse, long tradeId) {
+        super(owner, getGUITitle(plugin, owner, isResponse), 54);
+        this.initiator = owner;
+        this.target = Bukkit.getPlayer(targetPlayerData.getUuid()); // Puede ser null si está offline
+        this.targetPlayerData = targetPlayerData;
+        this.isResponse = isResponse;
+        this.tradeId = tradeId;
+        this.itemSlots = new ConcurrentHashMap<>();
+        this.closedByButton = new AtomicBoolean(false);
+        this.isProcessing = new AtomicBoolean(false);
+        this.isDirty = new AtomicBoolean(false);
+    }
+
+    /**
+     * Constructor que acepta nombre y UUID del jugador (para jugadores offline)
+     */
+    public PreTradeGUI(Player owner, String targetPlayerName, java.util.UUID targetPlayerUUID, Plugin plugin,
+            boolean isResponse, long tradeId) {
+        super(owner, getGUITitle(plugin, owner, isResponse), 54);
+        this.initiator = owner;
+        this.target = Bukkit.getPlayer(targetPlayerUUID); // Puede ser null si está offline
+        // Crear PlayerData temporal con la información disponible
+        this.targetPlayerData = new PlayerData(targetPlayerUUID, targetPlayerName, "Unknown");
         this.isResponse = isResponse;
         this.tradeId = tradeId;
         this.itemSlots = new ConcurrentHashMap<>();
@@ -168,7 +206,7 @@ public class PreTradeGUI extends GUI {
 
     private void setupConfirmButton() {
         String buttonKey = isResponse ? "gui.buttons.confirm_response" : "gui.buttons.confirm_new";
-        String targetPlayer = isResponse ? initiator.getName() : target.getName();
+        String targetPlayer = getTargetPlayerName();
 
         // Get item from ItemManager with player language support and dynamic lore
         // replacement
@@ -183,7 +221,7 @@ public class PreTradeGUI extends GUI {
     }
 
     private void setupInfoSign() {
-        String tradingWith = isResponse ? initiator.getName() : target.getName();
+        String tradingWith = isResponse ? initiator.getName() : getTargetPlayerName();
         String tradeIdText = tradeId != -1 ? String.valueOf(tradeId) : "Pending...";
 
         // Get base info item from ItemManager with player language support
@@ -198,6 +236,32 @@ public class PreTradeGUI extends GUI {
         } else {
             // Fallback if item not found
             plugin.getLogger().warning("Info sign item not found: gui.info.trade_info");
+        }
+    }
+
+    /**
+     * Obtener el nombre del jugador target, usando PlayerData si está disponible
+     */
+    private String getTargetPlayerName() {
+        if (targetPlayerData != null) {
+            return targetPlayerData.getPlayerName();
+        } else if (target != null) {
+            return target.getName();
+        } else {
+            return "Unknown Player";
+        }
+    }
+
+    /**
+     * Obtener el UUID del jugador target
+     */
+    private java.util.UUID getTargetPlayerUUID() {
+        if (targetPlayerData != null) {
+            return targetPlayerData.getUuid();
+        } else if (target != null) {
+            return target.getUniqueId();
+        } else {
+            return null;
         }
     }
 
@@ -358,18 +422,16 @@ public class PreTradeGUI extends GUI {
                 return;
             }
 
-            // IMMEDIATE UI RESPONSE - Close menu and send message instantly
+            // IMMEDIATE UI RESPONSE - Close menu and send ONE confirmation message
             closedByButton.set(true);
             owner.closeInventory();
 
-            // Send immediate confirmation message to user using MessageManager
+            // Send ONE confirmation message based on action type
             if (isResponse) {
-                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.success.items_sent");
-                plugin.getMessageManager().sendComponentMessage(initiator, "pretrade.notification.items_added",
-                        "player", target.getName());
+                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.notifications.items_sent");
             } else {
-                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.success.items_sent_to", "player",
-                        target.getName());
+                plugin.getMessageManager().sendComponentMessage(owner, "pretrade.notifications.items_sent_to", "player",
+                        getTargetPlayerName());
             }
 
             // Process database operations asynchronously in background
@@ -426,7 +488,7 @@ public class PreTradeGUI extends GUI {
     private void handleInitialConfirmationAsync() {
         // All database operations happen asynchronously
         CompletableFuture.runAsync(() -> {
-            plugin.getTradeManager().createNewTrade(owner.getUniqueId(), target.getUniqueId())
+            plugin.getTradeManager().createNewTrade(owner.getUniqueId(), getTargetPlayerUUID())
                     .thenCompose(newTradeId -> {
                         tradeId = newTradeId;
                         return plugin.getTradeManager().storeTradeItems(tradeId, owner.getUniqueId(),
@@ -454,40 +516,58 @@ public class PreTradeGUI extends GUI {
     }
 
     private void openTradeGUI() {
-        // Send confirmation messages using MessageManager
-        plugin.getMessageManager().sendComponentMessage(target, "pretrade.notification.trade_accepted", "player",
-                initiator.getName());
+        // Solo enviar notificaciones si el target está online
+        if (target != null && target.isOnline()) {
+            // Send confirmation messages using MessageManager
+            plugin.getMessageManager().sendComponentMessage(target, "pretrade.notifications.trade_accepted", "player",
+                    initiator.getName());
 
-        // Create clickable confirmation messages
-        Component confirmMessageInitiator = plugin.getMessageManager()
-                .getComponent(initiator, "pretrade.button.confirm_trade")
-                .clickEvent(ClickEvent.runCommand("/tradeconfirm " + target.getName() + " " + tradeId));
-        initiator.sendMessage(confirmMessageInitiator);
+            // Create clickable confirmation messages
+            Component confirmMessageInitiator = plugin.getMessageManager()
+                    .getComponent(initiator, "pretrade.buttons.confirm_trade")
+                    .clickEvent(ClickEvent.runCommand("/tradeconfirm " + getTargetPlayerName() + " " + tradeId));
+            initiator.sendMessage(confirmMessageInitiator);
 
-        Component confirmMessageTarget = plugin.getMessageManager()
-                .getComponent(target, "pretrade.button.confirm_trade")
-                .clickEvent(ClickEvent.runCommand("/tradeconfirm " + initiator.getName() + " " + tradeId));
-        target.sendMessage(confirmMessageTarget);
+            Component confirmMessageTarget = plugin.getMessageManager()
+                    .getComponent(target, "pretrade.buttons.confirm_trade")
+                    .clickEvent(ClickEvent.runCommand("/tradeconfirm " + initiator.getName() + " " + tradeId));
+            target.sendMessage(confirmMessageTarget);
+        } else {
+            // Target está offline - solo enviar mensaje al initiator
+            Component confirmMessageInitiator = plugin.getMessageManager()
+                    .getComponent(initiator, "pretrade.buttons.confirm_trade")
+                    .clickEvent(ClickEvent.runCommand("/tradeconfirm " + getTargetPlayerName() + " " + tradeId));
+            initiator.sendMessage(confirmMessageInitiator);
+
+            // Notificar que el otro jugador está offline
+            plugin.getMessageManager().sendComponentMessage(initiator, "pretrade.notifications.target_offline",
+                    "player", getTargetPlayerName());
+        }
     }
 
     private void sendViewTradeRequest() {
-        // Send notification to initiator using MessageManager
-        plugin.getMessageManager().sendComponentMessage(initiator, "pretrade.notification.trade_request.sent",
-                "player", target.getName(), "trade_id", tradeId);
+        // Send notification to initiator using MessageManager - ENVIAR INMEDIATAMENTE
+        // EL MENSAJE DE ÉXITO
+        plugin.getMessageManager().sendComponentMessage(initiator, "pretrade.notifications.trade_request_sent",
+                "player", getTargetPlayerName(), "trade_id", tradeId);
 
-        // Send notification to target using MessageManager
-        target.sendMessage(Component.empty());
-        plugin.getMessageManager().sendComponentMessage(target, "pretrade.notification.trade_request", "trade_id",
-                tradeId);
-        plugin.getMessageManager().sendComponentMessage(target, "pretrade.notification.trade_request.description",
-                "player", initiator.getName());
-        target.sendMessage(Component.empty());
+        // Solo enviar notificación al target si está online
+        if (target != null && target.isOnline()) {
+            // Send ONE comprehensive notification to target
+            plugin.getMessageManager().sendComponentMessage(target, "pretrade.notifications.trade_request_alert",
+                    "trade_id", tradeId);
 
-        // Create clickable view button
-        Component viewButton = plugin.getMessageManager().getComponent(target, "pretrade.buttons.view_trade")
-                .clickEvent(ClickEvent.runCommand("/tradeaccept " + initiator.getName() + " " + tradeId));
-        target.sendMessage(viewButton);
-        target.sendMessage(Component.empty());
+            // Create clickable view button
+            Component viewButton = plugin.getMessageManager()
+                    .getComponent(target, "pretrade.buttons.view_trade_with_sender", "player", initiator.getName(),
+                            "trade_id", String.valueOf(tradeId))
+                    .clickEvent(ClickEvent.runCommand("/tradeaccept " + initiator.getName() + " " + tradeId));
+            target.sendMessage(viewButton);
+        } else {
+            // Target está offline - notificar al initiator
+            plugin.getMessageManager().sendComponentMessage(initiator, "pretrade.notifications.trade_sent_offline",
+                    "player", getTargetPlayerName());
+        }
     }
 
     public List<ItemStack> getAllPagesItems() {
